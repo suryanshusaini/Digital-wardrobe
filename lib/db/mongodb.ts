@@ -9,13 +9,26 @@ if (!MONGODB_URI) {
   );
 }
 
-let cached = (global as any).mongoose;
-
-if (!cached) {
-  cached = (global as any).mongoose = { conn: null, promise: null };
+interface MongooseCache {
+  conn: typeof mongoose | null;
+  promise: Promise<typeof mongoose> | null;
 }
 
-export async function connectToDatabase() {
+declare global {
+  // eslint-disable-next-line no-var
+  var mongooseCache: MongooseCache | undefined;
+}
+
+const cached: MongooseCache = globalThis.mongooseCache || {
+  conn: null,
+  promise: null,
+};
+
+if (!globalThis.mongooseCache) {
+  globalThis.mongooseCache = cached;
+}
+
+export async function connectToDatabase(): Promise<typeof mongoose> {
   if (cached.conn) {
     return cached.conn;
   }
@@ -25,10 +38,10 @@ export async function connectToDatabase() {
       bufferCommands: false,
     };
 
-    cached.promise = mongoose.connect(MONGODB_URI!, opts).then((mongoose) => {
-      return mongoose;
-    });
+    cached.promise = mongoose.connect(MONGODB_URI!, opts).then((m) => m);
   }
   cached.conn = await cached.promise;
   return cached.conn;
 }
+
+export const connectDB = connectToDatabase;
