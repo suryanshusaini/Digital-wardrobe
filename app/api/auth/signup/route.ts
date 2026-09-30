@@ -1,58 +1,63 @@
-// app/api/auth/signup/route.ts
-// Public endpoint — no auth gate (excluded from proxy.ts matcher)
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db/mongodb";
 import User from "@/lib/db/models/User";
+import { authLimiter, getClientIp } from "@/lib/rateLimit";
+import { SignupSchema } from "@/lib/validation/schemas";
+import { logger, getRequestId } from "@/lib/logger";
 
 export async function POST(req: Request) {
+  const requestId = getRequestId(req);
+  const clientIp = getClientIp(req);
+
   try {
-    const body = await req.json();
-    const { name, email, password } = body as {
-      name?: string;
-      email?: string;
-      password?: string;
-    };
-
-    // ── Validation ────────────────────────────────────────────────────────────
-    if (!name || typeof name !== "string" || name.trim().length < 2) {
-      return NextResponse.json(
-        { error: "Name must be at least 2 characters." },
-        { status: 400 }
-      );
+    let rawBody: unknown;
+    try {
+      rawBody = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON payload" }, { status: 400 });
     }
 
-    if (!email || typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return NextResponse.json(
-        { error: "Please enter a valid email address." },
-        { status: 400 }
-      );
+    // ── Zod Validation ────────────────────────────────────────────────────────
+    const validation = SignupSchema.safeParse(rawBody);
+    if (!validation.success) {
+      const issue = validation.error.issues[0]?.message || "Invalid account details";
+      return NextResponse.json({ error: issue }, { status: 400 });
     }
 
-    if (!password || typeof password !== "string" || password.length < 8) {
+    const { name, email, password } = validation.data;
+
+    // ── Rate Limiting (5/min per IP + email) ───────────────────────────────────
+    const rlKey = `${clientIp}:${email}`;
+    const rl = await authLimiter.check(rlKey);
+    if (!rl.allowed) {
+      logger.warn("Signup rate limit exceeded", { requestId, clientIp, email });
       return NextResponse.json(
-        { error: "Password must be at least 8 characters." },
-        { status: 400 }
+        { error: "Too many attempts. Please try again later." },
+        { status: 429, headers: { "Retry-After": String(rl.retryAfter) } }
       );
     }
 
     // ── Database ──────────────────────────────────────────────────────────────
     await connectDB();
 
-    // Check for existing user (case-insensitive via lowercase: true on schema)
-    const existing = await User.findOne({ email: email.toLowerCase().trim() });
+    // Check for existing user (case-insensitive)
+    const existing = await User.findOne({ email });
     if (existing) {
+      // Avoid revealing whether an email exists for security (email enumeration prevention)
       return NextResponse.json(
-        { error: "An account with this email already exists." },
-        { status: 409 }
+        { error: "Unable to create account with these details. If you already have an account, please sign in." },
+        { status: 400 }
       );
     }
 
-    // Create user — the pre-save hook in User.ts will hash the password
+    // Create user — pre-save hook in User.ts hashes password with bcrypt cost 12
     const user = await User.create({
-      name: name.trim(),
-      email: email.toLowerCase().trim(),
+      name,
+      email,
       password,
     });
+
+    logger.info("New user registered successfully", { requestId, email });
 
     // Never return the password — respond with safe user fields only
     return NextResponse.json(

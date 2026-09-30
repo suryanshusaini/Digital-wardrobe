@@ -13,6 +13,11 @@ export const metadata: Metadata = {
     index: false,
     follow: false,
   },
+  openGraph: {
+    title: "Shared Wardrobe — My Wardrobe",
+    description: "Browse this shared digital wardrobe collection.",
+    type: "website",
+  },
 };
 
 export default function ShareLayout({

@@ -7,7 +7,10 @@ import bcrypt from "bcryptjs";
 import { connectDB } from "@/lib/db/mongodb";
 import User from "@/lib/db/models/User";
 
+import { authLimiter } from "@/lib/rateLimit";
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  useSecureCookies: process.env.NODE_ENV === "production",
   secret:
     process.env.AUTH_SECRET ||
     process.env.NEXTAUTH_SECRET ||
@@ -35,14 +38,24 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const email = credentials?.email as string | undefined;
         const password = credentials?.password as string | undefined;
 
-        if (!email || !password) return null;
+        if (!email || !password || typeof password !== "string" || password.length < 8) {
+          return null;
+        }
+
+        const cleanEmail = email.toLowerCase().trim();
+
+        // Rate limit credentials login: 5 attempts per minute per email
+        const rl = await authLimiter.check(cleanEmail);
+        if (!rl.allowed) {
+          return null;
+        }
 
         try {
           await connectDB();
 
           // Explicitly select password — it's hidden by default (select: false)
           const user = await User.findOne({
-            email: email.toLowerCase().trim(),
+            email: cleanEmail,
           }).select("+password");
 
           if (!user || !user.password) return null;

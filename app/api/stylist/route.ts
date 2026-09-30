@@ -4,13 +4,18 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { connectDB } from "@/lib/db/mongodb";
 import Item from "@/lib/db/models/Item";
-import { stylistLimiter } from "@/lib/rateLimit";
+import { stylistMinuteLimiter, stylistDayLimiter } from "@/lib/rateLimit";
+import { StylistRequestSchema } from "@/lib/validation/schemas";
+import { logger, getRequestId } from "@/lib/logger";
+import { z } from "zod";
 
-interface StylistRequest {
-  weather: string; // e.g. "sunny", "cold", "rainy", "hot", "mild"
-}
+const GeminiStylistSchema = z.object({
+  suggestedItemIds: z.array(z.string()).default([]),
+  explanation: z.string().default("Curated for current conditions."),
+});
 
 export async function POST(req: Request) {
+  const requestId = getRequestId(req);
   try {
     // ── Auth gate ─────────────────────────────────────────────────────────────
     const session = await auth();
@@ -19,21 +24,45 @@ export async function POST(req: Request) {
     }
     const userId = session.user.email;
 
-    // ── Rate limit: 10 AI requests per minute per user ────────────────────────
-    const rl = stylistLimiter.check(userId);
-    if (!rl.allowed) {
+    // ── Rate limits: 5/min and 50/day per user ────────────────────────────────
+    const minRl = await stylistMinuteLimiter.check(userId);
+    if (!minRl.allowed) {
+      logger.warn("Stylist minute limit exceeded", { requestId, route: "/api/stylist", userId });
       return NextResponse.json(
-        { error: "Too many requests. Please wait before requesting another suggestion." },
+        { error: "Too many stylist requests. Please wait a moment." },
         {
           status: 429,
-          headers: { "Retry-After": String(Math.ceil((rl.resetAt - Date.now()) / 1000)) },
+          headers: { "Retry-After": String(minRl.retryAfter) },
         }
       );
     }
 
-    // ── Parse request body ────────────────────────────────────────────────────
-    const body = (await req.json()) as StylistRequest;
-    const weather = body.weather?.trim() || "mild";
+    const dayRl = await stylistDayLimiter.check(userId);
+    if (!dayRl.allowed) {
+      logger.warn("Stylist daily limit exceeded", { requestId, route: "/api/stylist", userId });
+      return NextResponse.json(
+        { error: "Daily styling limit reached. Please check back tomorrow." },
+        {
+          status: 429,
+          headers: { "Retry-After": String(dayRl.retryAfter) },
+        }
+      );
+    }
+
+    // ── Parse and validate request body with Zod ──────────────────────────────
+    let rawJson: unknown;
+    try {
+      rawJson = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON payload" }, { status: 400 });
+    }
+
+    const bodyValidation = StylistRequestSchema.safeParse(rawJson);
+    if (!bodyValidation.success) {
+      return NextResponse.json({ error: "Invalid request parameters" }, { status: 400 });
+    }
+
+    const weather = bodyValidation.data.weather;
 
     // ── Fetch user's wardrobe items ───────────────────────────────────────────
     await connectDB();
@@ -109,44 +138,56 @@ Do not include any other text or markdown.`;
     );
 
     if (!geminiRes.ok) {
-      const errText = await geminiRes.text();
-      console.error("Gemini stylist error:", errText);
-      return NextResponse.json(
-        { error: "AI stylist is temporarily unavailable. Please try again." },
-        { status: 502 }
-      );
+      logger.warn("Gemini stylist API error, falling back to heuristics", { requestId });
+      const filtered = items.filter((item) => (item.tags?.weather ?? []).includes(weather));
+      const fallbackIds = filtered.slice(0, 4).map((i) => i._id.toString());
+      return NextResponse.json({
+        suggestedItemIds: fallbackIds.length ? fallbackIds : items.slice(0, 4).map((i) => i._id.toString()),
+        explanation: `Curated selection for ${weather} weather conditions.`,
+        source: "heuristic",
+      });
     }
 
     const geminiData = await geminiRes.json();
-    const rawText =
-      geminiData.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+    const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
 
-    let parsed: { suggestedItemIds: string[]; explanation: string };
+    let rawParsed: unknown = null;
     try {
-      parsed = JSON.parse(rawText);
+      rawParsed = JSON.parse(rawText);
     } catch {
-      console.error("Failed to parse Gemini stylist response:", rawText);
-      return NextResponse.json(
-        { error: "AI returned an unexpected response format. Please retry." },
-        { status: 500 }
-      );
+      logger.warn("Failed to parse Gemini raw response as JSON", { requestId });
+    }
+
+    // Validate with Zod
+    const modelValidation = GeminiStylistSchema.safeParse(rawParsed);
+    if (!modelValidation.success) {
+      logger.warn("Gemini response failed Zod validation, falling back to heuristics", {
+        requestId,
+        errors: modelValidation.error.issues,
+      });
+      const filtered = items.filter((item) => (item.tags?.weather ?? []).includes(weather));
+      const fallbackIds = filtered.slice(0, 4).map((i) => i._id.toString());
+      return NextResponse.json({
+        suggestedItemIds: fallbackIds.length ? fallbackIds : items.slice(0, 4).map((i) => i._id.toString()),
+        explanation: `Curated selection for ${weather} weather conditions.`,
+        source: "heuristic",
+      });
     }
 
     // Validate that returned IDs actually belong to this user's wardrobe
     const validIds = new Set(items.map((i) => i._id.toString()));
-    const safeIds = (parsed.suggestedItemIds ?? []).filter((id) =>
-      validIds.has(id)
-    );
+    const safeIds = modelValidation.data.suggestedItemIds.filter((id) => validIds.has(id));
 
     return NextResponse.json({
-      suggestedItemIds: safeIds,
-      explanation: parsed.explanation ?? "",
+      suggestedItemIds: safeIds.length ? safeIds : items.slice(0, 4).map((i) => i._id.toString()),
+      explanation: modelValidation.data.explanation,
       source: "ai",
     });
   } catch (error: unknown) {
-    console.error("AI Stylist error:", error);
-    const message =
-      error instanceof Error ? error.message : "Stylist service error.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    logger.error("AI Stylist unhandled error", error, { requestId });
+    return NextResponse.json(
+      { error: "An unexpected error occurred while styling." },
+      { status: 500 }
+    );
   }
 }

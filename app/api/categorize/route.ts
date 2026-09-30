@@ -1,8 +1,7 @@
-// app/api/categorize/route.ts
 import { NextResponse } from "next/server";
+import { GeminiCategorizeOutputSchema } from "@/lib/validation/schemas";
 
-const VALID_CATEGORIES = ["top", "bottom", "shoes", "accessory", "outfit"] as const;
-type Category = (typeof VALID_CATEGORIES)[number];
+type Category = "top" | "bottom" | "shoes" | "accessory" | "outfit";
 
 interface CategorizationResult {
   category: Category;
@@ -155,14 +154,21 @@ Identify its category and output ONLY valid JSON matching this exact schema:
           const data = await geminiRes.json();
           const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
           if (rawText) {
-            const parsed = JSON.parse(rawText);
-            const cat = parsed.category?.toLowerCase();
-            if (VALID_CATEGORIES.includes(cat as Category)) {
+            let parsed: unknown = null;
+            try {
+              parsed = JSON.parse(rawText);
+            } catch {
+              // Non-fatal parse failure
+            }
+
+            const validation = GeminiCategorizeOutputSchema.safeParse(parsed);
+            if (validation.success) {
+              const { category, weather, occasion } = validation.data;
               return NextResponse.json({
                 success: true,
-                category: cat,
-                weather: Array.isArray(parsed.weather) ? parsed.weather : ["mild"],
-                occasion: Array.isArray(parsed.occasion) ? parsed.occasion : ["casual"],
+                category,
+                weather: weather.length ? weather : ["mild"],
+                occasion: occasion.length ? occasion : ["casual"],
                 source: "ai",
               });
             }

@@ -4,11 +4,13 @@ import { connectToDatabase } from "@/lib/db/mongodb";
 import ShareLink from "@/lib/db/models/ShareLink";
 import { auth } from "@/auth";
 import crypto from "crypto";
-import { shareLimiter } from "@/lib/rateLimit";
+import { shareCreateLimiter } from "@/lib/rateLimit";
+import { logger, getRequestId } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
+  const requestId = getRequestId(req);
   try {
     const session = await auth();
     if (!session?.user?.email) {
@@ -16,13 +18,14 @@ export async function POST(req: NextRequest) {
     }
 
     const userEmail = session.user.email;
-    const userName = session.user.name || "User";
+    const userName = session.user.name || "Wardrobe Owner";
 
-    const rl = shareLimiter.check(userEmail);
+    const rl = await shareCreateLimiter.check(userEmail);
     if (!rl.allowed) {
+      logger.warn("Share link rate limit exceeded", { requestId, userEmail });
       return NextResponse.json(
-        { error: "Too many requests. Please wait a moment." },
-        { status: 429, headers: { "Retry-After": String(Math.ceil((rl.resetAt - Date.now()) / 1000)) } }
+        { error: "Too many share requests. Please wait a moment." },
+        { status: 429, headers: { "Retry-After": String(rl.retryAfter) } }
       );
     }
 

@@ -6,18 +6,23 @@ import { connectToDatabase } from "@/lib/db/mongodb";
 import Outfit from "@/lib/db/models/Outfit";
 import { auth } from "@/auth";
 
+import { ObjectIdSchema } from "@/lib/validation/schemas";
+import { logger, getRequestId } from "@/lib/logger";
+
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   ctx: RouteContext<"/api/outfits/[id]">
 ) {
+  const requestId = getRequestId(req);
   const session = await auth();
   if (!session?.user?.email) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const { id } = await ctx.params;
-  if (!id || !mongoose.Types.ObjectId.isValid(id)) {
-    return NextResponse.json({ error: "Invalid outfit ID" }, { status: 400 });
+  const idValidation = ObjectIdSchema.safeParse(id);
+  if (!idValidation.success || !mongoose.Types.ObjectId.isValid(id)) {
+    return NextResponse.json({ error: "Invalid outfit ID format" }, { status: 400 });
   }
 
   const userEmail = session.user.email;
@@ -39,7 +44,7 @@ export async function GET(
     }
     return NextResponse.json({ success: true, outfit }, { status: 200 });
   } catch (error) {
-    console.error("Fetch outfit error:", error);
+    logger.error("Fetch outfit error", error, { requestId, outfitId: id });
     return NextResponse.json(
       { error: "Failed to fetch outfit" },
       { status: 500 }
@@ -48,17 +53,19 @@ export async function GET(
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   ctx: RouteContext<"/api/outfits/[id]">
 ) {
+  const requestId = getRequestId(req);
   const session = await auth();
   if (!session?.user?.email) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const { id } = await ctx.params;
-  if (!id || !mongoose.Types.ObjectId.isValid(id)) {
-    return NextResponse.json({ error: "Invalid outfit ID" }, { status: 400 });
+  const idValidation = ObjectIdSchema.safeParse(id);
+  if (!idValidation.success || !mongoose.Types.ObjectId.isValid(id)) {
+    return NextResponse.json({ error: "Invalid outfit ID format" }, { status: 400 });
   }
   const userEmail = session.user.email;
   const userId = session.user.id;
@@ -69,7 +76,6 @@ export async function DELETE(
       $or: [
         { userId: userEmail },
         ...(userId ? [{ userId }] : []),
-        { userId: { $exists: false } },
       ],
     };
 
@@ -79,7 +85,7 @@ export async function DELETE(
     }
     return NextResponse.json({ success: true }, { status: 200 });
   } catch (error) {
-    console.error("Delete outfit error:", error);
+    logger.error("Delete outfit error", error, { requestId });
     return NextResponse.json(
       { error: "Failed to delete outfit" },
       { status: 500 }
@@ -91,14 +97,16 @@ export async function PATCH(
   req: NextRequest,
   ctx: RouteContext<"/api/outfits/[id]">
 ) {
+  const requestId = getRequestId(req);
   const session = await auth();
   if (!session?.user?.email) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const { id } = await ctx.params;
-  if (!id || !mongoose.Types.ObjectId.isValid(id)) {
-    return NextResponse.json({ error: "Invalid outfit ID" }, { status: 400 });
+  const idValidation = ObjectIdSchema.safeParse(id);
+  if (!idValidation.success || !mongoose.Types.ObjectId.isValid(id)) {
+    return NextResponse.json({ error: "Invalid outfit ID format" }, { status: 400 });
   }
   const userEmail = session.user.email;
   const userId = session.user.id;
@@ -139,7 +147,7 @@ export async function PATCH(
     }
     return NextResponse.json({ success: true, outfit: updated }, { status: 200 });
   } catch (error) {
-    console.error("Update outfit error:", error);
+    logger.error("Update outfit error", error, { requestId, outfitId: id });
     return NextResponse.json(
       { error: "Failed to update outfit" },
       { status: 500 }

@@ -1,6 +1,23 @@
 import type { NextConfig } from "next";
 
+const isProd = process.env.NODE_ENV === "production";
+
+const cspHeader = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: https://res.cloudinary.com https://lh3.googleusercontent.com",
+  "font-src 'self' data:",
+  "connect-src 'self' https://res.cloudinary.com https://api.cloudinary.com https://generativelanguage.googleapis.com https://accounts.google.com",
+  "frame-src 'self' https://accounts.google.com",
+  "worker-src 'self' blob:",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+].join("; ");
+
 const nextConfig: NextConfig = {
+  poweredByHeader: false,
   reactStrictMode: false, // intentional — avoids double-invocation with Framer Motion + R3F
   devIndicators: false,
   images: {
@@ -8,6 +25,10 @@ const nextConfig: NextConfig = {
       {
         protocol: "https",
         hostname: "res.cloudinary.com",
+      },
+      {
+        protocol: "https",
+        hostname: "lh3.googleusercontent.com",
       },
     ],
   },
@@ -27,27 +48,19 @@ const nextConfig: NextConfig = {
             key: "Permissions-Policy",
             value: "camera=(), microphone=(), geolocation=()",
           },
-          // Content Security Policy
-          // Allowlist: self + Cloudinary (images) + Google APIs (Gemini) + NextAuth (Google OAuth)
+          // HSTS (production only)
+          ...(isProd
+            ? [
+                {
+                  key: "Strict-Transport-Security",
+                  value: "max-age=63072000; includeSubDomains; preload",
+                },
+              ]
+            : []),
+          // Content Security Policy (Report-Only stage for telemetry & testing)
           {
-            key: "Content-Security-Policy",
-            value: [
-              "default-src 'self'",
-              // Scripts: self + Next.js inline scripts
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-              // Styles: self + inline (Tailwind v4 injects styles)
-              "style-src 'self' 'unsafe-inline'",
-              // Images: self + Cloudinary + data URIs (blur placeholders) + lh3 (Google avatars)
-              "img-src 'self' data: blob: https://res.cloudinary.com https://lh3.googleusercontent.com",
-              // Fonts: self
-              "font-src 'self'",
-              // Connect: self + Cloudinary + Gemini API + NextAuth endpoints
-              "connect-src 'self' https://res.cloudinary.com https://api.cloudinary.com https://generativelanguage.googleapis.com https://accounts.google.com",
-              // Frames: none (no iframes needed)
-              "frame-src 'none'",
-              // Workers for Three.js / R3F WASM
-              "worker-src 'self' blob:",
-            ].join("; "),
+            key: "Content-Security-Policy-Report-Only",
+            value: cspHeader,
           },
         ],
       },

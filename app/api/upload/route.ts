@@ -4,6 +4,8 @@ import Item, { type IItem } from "@/lib/db/models/Item";
 import { v2 as cloudinary, type UploadApiResponse } from "cloudinary";
 import { auth } from "@/auth";
 import { uploadLimiter } from "@/lib/rateLimit";
+import { ItemCreateSchema } from "@/lib/validation/schemas";
+import { logger, getRequestId } from "@/lib/logger";
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -11,10 +13,8 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-const VALID_CATEGORIES = ["top", "bottom", "shoes", "accessory", "outfit"] as const;
-type ValidCategory = (typeof VALID_CATEGORIES)[number];
-
 export async function POST(req: Request) {
+  const requestId = getRequestId(req);
   try {
     const session = await auth();
     if (!session?.user?.email) {
@@ -22,44 +22,55 @@ export async function POST(req: Request) {
     }
     const userEmail = session.user.email;
 
-    // Rate limit: 15 uploads per minute per user
-    const rl = uploadLimiter.check(userEmail);
+    // Rate limit: 10 uploads per minute per user
+    const rl = await uploadLimiter.check(userEmail);
     if (!rl.allowed) {
+      logger.warn("Upload rate limit exceeded", { requestId, route: "/api/upload", userEmail });
       return NextResponse.json(
-        { error: "Too many uploads. Please wait a moment and try again." },
+        { error: "Upload limit reached. Please wait a moment." },
         {
           status: 429,
-          headers: { "Retry-After": String(Math.ceil((rl.resetAt - Date.now()) / 1000)) },
+          headers: { "Retry-After": String(rl.retryAfter) },
         }
       );
     }
 
     const formData = await req.formData();
     const file = (formData.get("file") || formData.get("imageFile") || formData.get("image")) as File | null;
-    const name = (formData.get("name") as string) || file?.name?.split(".")[0] || "Clothing Item";
+    const nameRaw = (formData.get("name") as string) || file?.name?.split(".")[0] || "Clothing Item";
     const categoryRaw = (formData.get("category") as string) || "top";
     const weatherRaw = (formData.get("weather") as string) || "";
     const occasionRaw = (formData.get("occasion") as string) || "";
-    const weather = weatherRaw.split(",").filter(Boolean);
-    const occasion = occasionRaw.split(",").filter(Boolean);
+    const weatherList = weatherRaw.split(",").map((s) => s.trim()).filter(Boolean);
+    const occasionList = occasionRaw.split(",").map((s) => s.trim()).filter(Boolean);
+
+    // Validate payload fields with Zod
+    const validation = ItemCreateSchema.safeParse({
+      name: nameRaw,
+      category: categoryRaw.toLowerCase(),
+      weather: weatherList,
+      occasion: occasionList,
+    });
+
+    if (!validation.success) {
+      return NextResponse.json(
+        { error: "Invalid item metadata provided" },
+        { status: 400 }
+      );
+    }
+
+    const { name, category, weather, occasion } = validation.data;
 
     if (!file || typeof file === "string" || file.size === 0) {
       return NextResponse.json({ error: "No valid file uploaded" }, { status: 400 });
     }
 
-    // Server-side size cap (15MB)
-    const MAX_BYTES = 15 * 1024 * 1024;
+    // Server-side size caps: 4.5MB for HEIC (Vercel payload constraint), 15MB for other files
+    const isHeic = file.type === "image/heic" || file.type === "image/heif" || /\.(heic|heif)$/i.test(file.name);
+    const MAX_BYTES = isHeic ? 4.5 * 1024 * 1024 : 15 * 1024 * 1024;
     if (file.size > MAX_BYTES) {
       return NextResponse.json(
-        { error: "File exceeds 15MB size limit" },
-        { status: 400 }
-      );
-    }
-
-    const category = categoryRaw.toLowerCase() as ValidCategory;
-    if (!VALID_CATEGORIES.includes(category)) {
-      return NextResponse.json(
-        { error: `Invalid category. Must be one of: ${VALID_CATEGORIES.join(", ")}` },
+        { error: isHeic ? "HEIC file exceeds 4.5MB host limit" : "File exceeds 15MB size limit" },
         { status: 400 }
       );
     }
