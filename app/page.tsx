@@ -18,6 +18,7 @@ import ShareButton from "@/components/layout/ShareButton";
 import { ArchiveEmptyState, GallerySkeleton } from "@/components/ui/GalleryStates";
 import { useToast } from "@/components/ui/Toast";
 import SectionReveal from "@/components/ui/SectionReveal";
+import { OutfitMakerErrorBoundary } from "@/components/ui/OutfitMakerErrorBoundary";
 
 // Dynamic imports to keep initial bundle lean (3D and canvas editor code split)
 const Podium = dynamic(() => import("@/components/3d/Podium"), {
@@ -466,13 +467,15 @@ export default function Home() {
                   Stage tops over bottoms, rotate and resize, then export a lookbook card.
                 </p>
               </div>
-              <OutfitMaker
-                items={items}
-                initialOutfit={editingOutfit}
-                onOutfitSaved={() => {
-                  setEditingOutfit(null);
-                }}
-              />
+              <OutfitMakerErrorBoundary>
+                <OutfitMaker
+                  items={items}
+                  initialOutfit={editingOutfit}
+                  onOutfitSaved={() => {
+                    setEditingOutfit(null);
+                  }}
+                />
+              </OutfitMakerErrorBoundary>
             </motion.div>
           )}
 
