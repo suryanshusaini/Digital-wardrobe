@@ -114,3 +114,67 @@
 - [ ] Apple HEIC file selection in Chrome/Firefox: verify file bypasses canvas decoding without console exceptions, shows `HEIC · Cloudinary auto-converts` tag, and rejects files $>4.5\text{MB}$ with a clear Vercel host limit message.
 - [ ] Archive $>50$ items: verify initial render slices at 48 items and dynamically loads remaining items with infinite scroll sentinel or "Show more pieces" button.
 - [ ] Analytics AI Stylist: select weather pill and click "Curate Outfit" to verify interactive stylist recommendations and rate-limit safety.
+
+---
+
+## Priority 5: Production Hardening Implementation
+
+### 1. Multi-Tier Distributed Rate Limiting (`lib/rateLimit.ts`)
+- **Store Architecture**: Designed with `RateLimiterStore` interface supporting Upstash Redis REST endpoints (`UPSTASH_REDIS_REST_URL` & `UPSTASH_REDIS_REST_TOKEN`) for distributed serverless synchronization, with graceful sliding-window in-memory fallback.
+- **Fail-Safe Startup Alert**: Logs an explicit warning in production when running without Upstash Redis so engineers are aware that in-memory fallback runs per-container.
+- **Enforced Limits**:
+  - Image Uploads: $10\text{ req/min}$ per IP/user (`uploadLimiter`).
+  - AI Stylist Recommendations: $5\text{ req/min}$ and $50\text{ req/day}$ per IP/user (`stylistMinLimiter`, `stylistDailyLimiter`).
+  - Share Link Creation: $10\text{ req/min}$ per user (`shareCreateLimiter`).
+  - Public Share Reading: $60\text{ req/min}$ per IP (`publicShareReadLimiter`).
+  - Authentication (Login & Signup): $5\text{ req/min}$ per IP/email (`authLimiter`).
+
+### 2. Zod Validation & Schema Defense (`lib/validation/schemas.ts`, `lib/env.ts`)
+- **MongoDB ObjectId Validation**: Custom Zod 24-character hexadecimal pattern matching paired with `mongoose.Types.ObjectId.isValid` on all dynamic routes (`[id]`).
+- **Entity Schemas**: Strict Zod schemas for `ItemSchema`, `ItemUpdateSchema`, `OutfitSchema`, `SignupSchema`, `LoginSchema`, and `StylistPromptSchema`.
+- **LLM Output Sanitization**: `GeminiCategorizeOutputSchema` strips extraneous markdown/backticks and guarantees category and tag structure.
+- **Environment Boot Validation**: `validateEnv()` in `lib/env.ts` fails fast with detailed developer warnings for missing critical keys (`MONGODB_URI`, `AUTH_SECRET`, `GOOGLE_CLIENT_ID`, etc.). `.env.example` created with template variables.
+
+### 3. Security Headers & CSP (`next.config.ts`)
+- **Report-Only CSP**: Initial deployment uses `Content-Security-Policy-Report-Only` allowing non-breaking telemetry on scripts, Cloudinary media domains, fonts, and inline styles while logging violations.
+- **Strict Headers**: Configured `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`, and HSTS `max-age=63072000; includeSubDomains; preload` for production. `poweredByHeader` disabled.
+
+### 4. Comprehensive Error Boundaries & Resiliency
+- **`app/error.tsx`**: Minimalist root route boundary with structured error logging, polite error message, retry trigger, and return-to-wardrobe CTA.
+- **`app/global-error.tsx`**: Critical root layout boundary rendering isolated `<html>` and `<body>` with studio reload action.
+- **`app/share/[token]/error.tsx`**: Route-segment boundary handling malformed or unresolvable lookbook links.
+- **`components/ui/OutfitMakerErrorBoundary.tsx`**: Component-level error boundary wrapping `OutfitMaker` to isolate canvas manipulation exceptions from the rest of the application.
+- **`app/not-found.tsx` & `app/loading.tsx`**: Completely aligned with design system tokens, local Cormorant Garamond serif typography, and zero-flash dark mode.
+- **NextAuth Error Mapping (`app/login/page.tsx`)**: Decodes NextAuth URL error query parameters (`OAuthSignin`, `CredentialsSignin`, `AccessDenied`, `Configuration`) within a `<Suspense>` boundary into user-friendly notices without leaking whether an email exists.
+
+### 5. Share Page Hardening & Privacy Protections
+- **Robots Directives**: `robots: { index: false, follow: false }` added to `app/share/[token]/layout.tsx` to prevent search engine indexing of shared wardrobe links.
+- **Data Minimization Projection**: `app/api/share/[token]/route.ts` strictly strips all internal user emails, user IDs, and system fields. Returns only public garment attributes and sanitized first name or handle.
+
+### 6. Observability & Logging (`lib/logger.ts`)
+- **Structured JSON Format**: Standardized logging with `level`, `message`, `requestId`, `timestamp`, and `context`.
+- **Request Correlation**: Integrates with Next.js 16 incoming `x-request-id` headers for end-to-end request tracing.
+- **Automatic PII Redaction**: Regex scrubbing for emails, passwords, auth tokens, bearer credentials, and API secrets.
+- **Sentry Integration Point**: Clean hook in `logger.error` enabled via `ENABLE_SENTRY=true`.
+
+---
+
+## Manual Test Checklist (Priority 5)
+
+### 1. Rate Limiting Tests
+- [ ] Make 6 rapid requests to `POST /api/upload`: confirm the 11th request receives HTTP 429 Too Many Requests with a `Retry-After` header.
+- [ ] Make 6 rapid incorrect sign-in attempts at `POST /api/auth/signup`: confirm HTTP 429 response.
+- [ ] In production logs: verify absence of memory leak warnings and confirm Upstash configuration status notice.
+
+### 2. Malformed Payload & Injection Defense
+- [ ] Call `DELETE /api/items/12345nonhex`: confirm immediate HTTP 400 Bad Request with `{ "error": "Invalid item ID format" }` without database query execution.
+- [ ] Call `PATCH /api/items/<valid_id>` with `{ "category": "invalid_type" }`: confirm HTTP 400 Bad Request with Zod schema validation errors.
+
+### 3. Error Boundary Verification
+- [ ] Trigger client error in `OutfitMaker`: verify the localized `<OutfitMakerErrorBoundary>` card renders with "Reset Canvas" button while the top navigation and wardrobe state remain interactive.
+- [ ] Visit an unresolvable URL (e.g. `/unknown-route`): confirm the minimalist 404 page renders with Cormorant Garamond serif heading and working "Return to Wardrobe" button.
+- [ ] Visit `/share/invalid-token-12345`: confirm the "Link Unavailable" error card renders with "Visit Digital Wardrobe" button.
+
+### 4. Auth & Privacy Verification
+- [ ] Navigate to `/login?error=OAuthSignin`: confirm user-friendly notice "Could not sign in with Google. Please try again." appears without technical stack traces.
+- [ ] Inspect network response for `GET /api/share/[token]`: verify the JSON payload contains zero references to `userId`, `email`, or internal user properties.
