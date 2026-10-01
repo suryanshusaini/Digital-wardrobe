@@ -3,6 +3,7 @@ import localFont from "next/font/local";
 import "./globals.css";
 import Providers from "@/components/Providers";
 import AccountIndicator from "@/components/layout/AccountIndicator";
+import Footer from "@/components/layout/Footer";
 
 // Geist fonts served locally — avoids build-time Google Fonts network fetch
 const geistSans = localFont({
@@ -67,7 +68,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       </head>
       <body className="flex min-h-full min-h-dvh flex-col antialiased bg-background text-foreground">
         <Providers>
-          {children}
+          <div className="flex-1 flex flex-col">{children}</div>
+          <Footer />
           <AccountIndicator />
         </Providers>
       </body>
