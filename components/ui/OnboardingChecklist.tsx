@@ -14,10 +14,11 @@ const DISMISS_KEY = "dw-onboarding-dismissed";
 const PODIUM_OPENED_KEY = "dw-podium-opened";
 
 interface OnboardingChecklistProps {
+  userId?: string;
   pieceCount: number;
   outfitCount: number;
   hasShared: boolean;
-  hasPodiumOpened: boolean;
+  hasPodiumOpened?: boolean;
 }
 
 interface Step {
@@ -28,13 +29,25 @@ interface Step {
 
 const emptySubscribe = () => () => {};
 
+const podiumSubscribe = (callback: () => void) => {
+  if (typeof window === "undefined") return () => {};
+  window.addEventListener("dw-podium-opened", callback);
+  window.addEventListener("storage", callback);
+  return () => {
+    window.removeEventListener("dw-podium-opened", callback);
+    window.removeEventListener("storage", callback);
+  };
+};
+
 export default function OnboardingChecklist({
+  userId,
   pieceCount,
   outfitCount,
   hasShared,
-  hasPodiumOpened,
+  hasPodiumOpened = false,
 }: OnboardingChecklistProps) {
   const [userDismissed, setUserDismissed] = useState(false);
+  const dismissKey = userId ? `${DISMISS_KEY}-${userId}` : DISMISS_KEY;
 
   // Read client mount state safely without setState in effect
   const isClient = useSyncExternalStore(emptySubscribe, () => true, () => false);
@@ -44,7 +57,7 @@ export default function OnboardingChecklist({
     emptySubscribe,
     () => {
       try {
-        return localStorage.getItem(DISMISS_KEY) === "1";
+        return localStorage.getItem(dismissKey) === "1";
       } catch {
         return false;
       }
@@ -52,19 +65,26 @@ export default function OnboardingChecklist({
     () => false
   );
 
+  // Read localStorage podium state reactively
+  const storedPodiumOpened = useSyncExternalStore(
+    podiumSubscribe,
+    () => getPodiumOpened(userId),
+    () => false
+  );
+
   const steps = useMemo((): Step[] => [
     { id: "pieces", label: "Add 3 pieces to your wardrobe", done: pieceCount >= 3 },
     { id: "outfit", label: "Create your first outfit", done: outfitCount >= 1 },
-    { id: "podium", label: "Open the 3D Studio Podium", done: hasPodiumOpened },
+    { id: "podium", label: "Open the 3D Studio Podium", done: hasPodiumOpened || storedPodiumOpened },
     { id: "share", label: "Share your lookbook", done: hasShared },
-  ], [pieceCount, outfitCount, hasPodiumOpened, hasShared]);
+  ], [pieceCount, outfitCount, hasPodiumOpened, storedPodiumOpened, hasShared]);
 
   const allDone = steps.every((s) => s.done);
   const completedCount = steps.filter((s) => s.done).length;
 
   const handleDismiss = () => {
     setUserDismissed(true);
-    try { localStorage.setItem(DISMISS_KEY, "1"); } catch { /* ignore */ }
+    try { localStorage.setItem(dismissKey, "1"); } catch { /* ignore */ }
   };
 
   // Don't render: not mounted on client, dismissed, or all done
@@ -121,11 +141,18 @@ export default function OnboardingChecklist({
 }
 
 /** Utility: call this when user opens the podium tab to mark it opened. */
-export function markPodiumOpened() {
-  try { localStorage.setItem(PODIUM_OPENED_KEY, "1"); } catch { /* ignore */ }
+export function markPodiumOpened(userId?: string) {
+  const key = userId ? `${PODIUM_OPENED_KEY}-${userId}` : PODIUM_OPENED_KEY;
+  try {
+    localStorage.setItem(key, "1");
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("dw-podium-opened"));
+    }
+  } catch { /* ignore */ }
 }
 
 /** Utility: read whether podium was opened (safe). */
-export function getPodiumOpened(): boolean {
-  try { return localStorage.getItem(PODIUM_OPENED_KEY) === "1"; } catch { return false; }
+export function getPodiumOpened(userId?: string): boolean {
+  const key = userId ? `${PODIUM_OPENED_KEY}-${userId}` : PODIUM_OPENED_KEY;
+  try { return localStorage.getItem(key) === "1"; } catch { return false; }
 }

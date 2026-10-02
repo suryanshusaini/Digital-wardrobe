@@ -27,7 +27,7 @@ const geistMono = localFont({
 const headingSerif = localFont({
   src: "../public/fonts/cormorant-garamond-latin.woff2",
   variable: "--font-heading-serif",
-  weight: "300 500",
+  weight: "300 700",
   display: "swap",
 });
 

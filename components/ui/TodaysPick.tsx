@@ -13,11 +13,12 @@ import { Sparkles, ArrowRight, RefreshCw } from "lucide-react";
 import StitchLoader from "@/components/ui/StitchLoader";
 
 interface TodaysPickProps {
-  onTryInMaker: (suggestion: string) => void;
+  onTryInMaker: (suggestion: string, suggestedItemIds?: string[]) => void;
 }
 
 interface StylistResult {
   recommendation: string;
+  suggestedItemIds?: string[];
 }
 
 const CACHE_KEY = `dw-todays-pick-${new Date().toISOString().slice(0, 10)}`;
@@ -70,14 +71,20 @@ export default function TodaysPick({ onTryInMaker }: TodaysPickProps) {
         return;
       }
 
-      const data = await res.json() as { recommendation?: string; response?: string };
-      const recommendation = data.recommendation ?? data.response ?? "";
-      if (!recommendation) {
+      const data = await res.json() as {
+        recommendation?: string;
+        explanation?: string;
+        response?: string;
+        suggestedItemIds?: string[];
+      };
+      const recommendation = data.explanation ?? data.recommendation ?? data.response ?? "";
+      const suggestedItemIds = Array.isArray(data.suggestedItemIds) ? data.suggestedItemIds : [];
+      if (!recommendation && suggestedItemIds.length === 0) {
         setErrorMsg("No suggestion returned. Try again.");
         setState("error");
         return;
       }
-      const picked: StylistResult = { recommendation };
+      const picked: StylistResult = { recommendation, suggestedItemIds };
       setResult(picked);
       saveToCache(picked);
       setState("success");
@@ -117,7 +124,7 @@ export default function TodaysPick({ onTryInMaker }: TodaysPickProps) {
           <p className="text-sm leading-relaxed text-foreground">{result.recommendation}</p>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => onTryInMaker(result.recommendation)}
+              onClick={() => onTryInMaker(result.recommendation, result.suggestedItemIds)}
               className="flex items-center gap-1.5 rounded-full bg-accent px-4 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
               style={{ background: "var(--accent)", color: "var(--accent-foreground)" }}
             >

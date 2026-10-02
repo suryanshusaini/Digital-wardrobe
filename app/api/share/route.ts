@@ -9,6 +9,26 @@ import { logger, getRequestId } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
+export async function GET(req: NextRequest) {
+  const requestId = getRequestId(req);
+  try {
+    const session = await auth();
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    await connectToDatabase();
+    const link = await ShareLink.findOne({ userId: session.user.email }).select("token -_id");
+    return NextResponse.json({
+      hasShared: Boolean(link?.token),
+      token: link?.token ?? null,
+    });
+  } catch (error) {
+    logger.error("Check share status error", error, { requestId });
+    return NextResponse.json({ error: "Failed to check share status" }, { status: 500 });
+  }
+}
+
 export async function POST(req: NextRequest) {
   const requestId = getRequestId(req);
   try {

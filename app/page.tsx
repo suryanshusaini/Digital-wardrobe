@@ -41,7 +41,7 @@ import CommandPalette from "@/components/ui/CommandPalette";
 import BottomTabBar from "@/components/layout/BottomTabBar";
 import StitchLoader from "@/components/ui/StitchLoader";
 import TodaysPick from "@/components/ui/TodaysPick";
-import OnboardingChecklist, { markPodiumOpened, getPodiumOpened } from "@/components/ui/OnboardingChecklist";
+import OnboardingChecklist, { markPodiumOpened } from "@/components/ui/OnboardingChecklist";
 import { viewTransition } from "@/lib/motion";
 import { BRAND_NAME } from "@/lib/brand";
 
@@ -111,6 +111,20 @@ function HomeInner() {
       ? viewParam
       : "gallery";
 
+  const userId = session?.user?.email ?? "";
+
+  // ── Data ──────────────────────────────────────────────────────────────────
+  const [items, setItems] = useState<WardrobeItem[]>([]);
+  const [outfitCount, setOutfitCount] = useState(0);
+  const [hasShared, setHasShared] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [editingItem, setEditingItem] = useState<WardrobeItem | null>(null);
+  const [editingOutfit, setEditingOutfit] = useState<SavedOutfit | null>(null);
+  const [headerScrolled, setHeaderScrolled] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>("all");
+  const hasFetched = useRef(false);
+
   const navigateTo = useCallback(
     (view: string) => {
       const params = new URLSearchParams(searchParams.toString());
@@ -119,23 +133,14 @@ function HomeInner() {
       } else {
         params.set("view", view);
       }
-      // Track podium opens for onboarding checklist
-      if (view === "podium") markPodiumOpened();
+      // Track podium opens for onboarding checklist (per user)
+      if (view === "podium") {
+        markPodiumOpened(userId);
+      }
       router.replace(`/?${params.toString()}`, { scroll: false });
     },
-    [router, searchParams]
+    [router, searchParams, userId]
   );
-
-  // ── Data ──────────────────────────────────────────────────────────────────
-  const [items, setItems] = useState<WardrobeItem[]>([]);
-  const [outfitCount, setOutfitCount] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [editingItem, setEditingItem] = useState<WardrobeItem | null>(null);
-  const [editingOutfit, setEditingOutfit] = useState<SavedOutfit | null>(null);
-  const [headerScrolled, setHeaderScrolled] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>("all");
-  const hasFetched = useRef(false);
 
   // ── Theme ─────────────────────────────────────────────────────────────────
   const [theme, setTheme] = useState<"light" | "dark" | "system">(() => {
@@ -241,17 +246,56 @@ function HomeInner() {
       : BRAND_NAME;
   const userInitial = (session?.user?.name?.[0] ?? session?.user?.email?.[0] ?? "?").toUpperCase();
 
-  // ── Onboarding state ──────────────────────────────────────────────────────
-  const [podiumOpened] = useState(() =>
-    typeof window !== "undefined" ? getPodiumOpened() : false
+  // ── Preload suggested pieces into OutfitMaker ──────────────────────────────
+  const handleTryInMaker = useCallback(
+    (_recommendation: string, suggestedIds?: string[]) => {
+      const ids = suggestedIds && suggestedIds.length > 0 ? suggestedIds : [];
+      const matched = items.filter((i) => ids.includes(i._id));
+      const targetItems = matched.length > 0 ? matched : items.slice(0, 3);
+
+      const defaultPositions: Record<string, { x: number; y: number; width: number; zIndex: number }> = {
+        top: { x: 180, y: 40, width: 170, zIndex: 30 },
+        bottom: { x: 185, y: 180, width: 160, zIndex: 20 },
+        shoes: { x: 195, y: 320, width: 140, zIndex: 10 },
+        accessory: { x: 320, y: 50, width: 90, zIndex: 40 },
+      };
+
+      const stagedOutfit: SavedOutfit = {
+        _id: "todays-pick-" + Date.now(),
+        name: "Today's Pick",
+        createdAt: new Date().toISOString(),
+        items: targetItems.map((item, idx) => {
+          const pos = defaultPositions[item.category] ?? {
+            x: 150 + idx * 20,
+            y: 80 + idx * 60,
+            width: 150,
+            zIndex: idx + 1,
+          };
+          return {
+            itemId: item._id,
+            imageUrl: item.imageUrl,
+            x: pos.x,
+            y: pos.y,
+            width: pos.width,
+            zIndex: pos.zIndex,
+            rotation: 0,
+          };
+        }),
+      };
+
+      setEditingOutfit(stagedOutfit);
+      navigateTo("outfitmaker");
+    },
+    [items, navigateTo]
   );
 
   // ── Data fetching ─────────────────────────────────────────────────────────
   const fetchItems = useCallback(async () => {
     try {
-      const [itemsRes, outfitsRes] = await Promise.all([
+      const [itemsRes, outfitsRes, shareRes] = await Promise.all([
         fetch("/api/items", { cache: "no-store" }),
         fetch("/api/outfits", { cache: "no-store" }),
+        fetch("/api/share", { cache: "no-store" }),
       ]);
       if (itemsRes.ok) {
         const data = await itemsRes.json() as { success: boolean; items: WardrobeItem[] };
@@ -260,6 +304,10 @@ function HomeInner() {
       if (outfitsRes.ok) {
         const data = await outfitsRes.json() as { outfits?: unknown[] };
         setOutfitCount(Array.isArray(data.outfits) ? data.outfits.length : 0);
+      }
+      if (shareRes.ok) {
+        const data = await shareRes.json() as { hasShared?: boolean };
+        if (typeof data.hasShared === "boolean") setHasShared(data.hasShared);
       }
     } catch {
       // Silent on initial mount
@@ -355,11 +403,13 @@ function HomeInner() {
   // ── Share URL helper for command palette ──────────────────────────────────
   const copyShareLink = useCallback(async () => {
     try {
-      const res = await fetch("/api/share");
+      const res = await fetch("/api/share", { method: "POST" });
       if (res.ok) {
-        const data = await res.json() as { token?: string };
+        const data = await res.json() as { token?: string; shareUrl?: string };
         if (data.token) {
-          await navigator.clipboard.writeText(`${window.location.origin}/share/${data.token}`);
+          const url = data.shareUrl || `${window.location.origin}/share/${data.token}`;
+          await navigator.clipboard.writeText(url);
+          setHasShared(true);
           toast("Share link copied!");
         }
       }
@@ -666,10 +716,10 @@ function HomeInner() {
 
                 {/* ── Onboarding checklist ──────────────────────────────── */}
                 <OnboardingChecklist
+                  userId={userId}
                   pieceCount={items.length}
                   outfitCount={outfitCount}
-                  hasShared={false}
-                  hasPodiumOpened={podiumOpened}
+                  hasShared={hasShared}
                 />
 
                 {/* ── Upload card ───────────────────────────────────────── */}
@@ -680,7 +730,7 @@ function HomeInner() {
                 {/* ── Today's Pick ──────────────────────────────────────── */}
                 {items.length > 0 && (
                   <div className="mb-8 max-w-md">
-                    <TodaysPick onTryInMaker={() => navigateTo("outfitmaker")} />
+                    <TodaysPick onTryInMaker={handleTryInMaker} />
                   </div>
                 )}
 
