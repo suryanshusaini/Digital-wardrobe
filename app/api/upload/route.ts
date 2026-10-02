@@ -25,7 +25,7 @@ export async function POST(req: Request) {
     // Rate limit: 10 uploads per minute per user
     const rl = await uploadLimiter.check(userEmail);
     if (!rl.allowed) {
-      logger.warn("Upload rate limit exceeded", { requestId, route: "/api/upload", userEmail });
+      logger.warn("Upload rate limit exceeded", { requestId, route: "/api/upload" });
       return NextResponse.json(
         { error: "Upload limit reached. Please wait a moment." },
         {
@@ -129,66 +129,9 @@ export async function POST(req: Request) {
       userId: userEmail,
     });
 
-    // ── Phase 4: 3D Asset Pipeline (non-blocking placeholder) ─────────────────
-    //
-    // Once a 3D generation API key is configured, enable this block to
-    // automatically convert every uploaded clothing photo into a .glb 3D model.
-    //
-    // Supported providers:
-    //   • Tripo3D  — https://platform.tripo3d.ai/docs
-    //   • Meshy    — https://docs.meshy.ai/api-image-to-3d
-    //
-    // The call is wrapped in `void` so it NEVER blocks or delays this response.
-    // On success it patches model3dUrl onto the Item document in the background.
-    //
-    // void (async () => {
-    //   try {
-    //     const api3dKey = process.env.TRIPO3D_API_KEY; // or MESHY_API_KEY
-    //     if (!api3dKey) return;
-    //
-    //     // Submit the image buffer to the 3D generation queue
-    //     const form = new FormData();
-    //     form.append("image", new Blob([buffer], { type: file.type }), file.name);
-    //     form.append("mode", "refine");          // refine | draft
-    //
-    //     const submitRes = await fetch("https://platform.tripo3d.ai/v2/3dmodel", {
-    //       method: "POST",
-    //       headers: { Authorization: `Bearer ${api3dKey}` },
-    //       body: form,
-    //     });
-    //
-    //     if (!submitRes.ok) return;
-    //     const { task_id } = await submitRes.json();
-    //
-    //     // Poll until model is ready (max ~5 min)
-    //     for (let attempt = 0; attempt < 30; attempt++) {
-    //       await new Promise((r) => setTimeout(r, 10_000)); // wait 10 s
-    //       const pollRes = await fetch(
-    //         `https://platform.tripo3d.ai/v2/3dmodel/${task_id}`,
-    //         { headers: { Authorization: `Bearer ${api3dKey}` } }
-    //       );
-    //       if (!pollRes.ok) continue;
-    //       const { status, output } = await pollRes.json();
-    //       if (status === "success" && output?.model) {
-    //         // Patch the model URL onto the Item document
-    //         await Item.findByIdAndUpdate(newItem._id, {
-    //           model3dUrl: output.model, // HTTPS URL to the .glb file
-    //         });
-    //         console.log(`3D model generated for item ${newItem._id}: ${output.model}`);
-    //         break;
-    //       }
-    //       if (status === "failed") break;
-    //     }
-    //   } catch (err3d) {
-    //     // Non-fatal — log and continue; the 2D item still works fine
-    //     console.warn("3D generation pipeline error (non-blocking):", err3d);
-    //   }
-    // })();
-    // ── End of 3D pipeline placeholder ───────────────────────────────────────
-
     return NextResponse.json({ success: true, item: newItem });
   } catch (error: unknown) {
-    console.error("Upload pipeline error:", error);
+    logger.error("Upload pipeline error", error, { requestId });
     const message = error instanceof Error ? error.message : "Failed to process image";
     return NextResponse.json(
       { error: message },

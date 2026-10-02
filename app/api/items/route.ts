@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { connectToDatabase } from "@/lib/db/mongodb";
 import Item from "@/lib/db/models/Item";
 import { auth } from "@/auth";
+import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,9 @@ export async function GET() {
         { $set: { userId: userEmail } }
       );
     } catch (claimErr) {
-      console.warn("Item auto-claim notice:", claimErr);
+      logger.warn("Item auto-claim notice", {
+        error: claimErr instanceof Error ? claimErr.message : "Claim error",
+      });
     }
 
     // Query items belonging to the user, with safety fallback for unassigned items
@@ -50,7 +53,7 @@ export async function GET() {
     const items = await Item.find(query).sort({ createdAt: -1 });
     return NextResponse.json({ success: true, items }, { status: 200 });
   } catch (error) {
-    console.error("Failed to fetch items:", error);
+    logger.error("Failed to fetch items", error);
     return NextResponse.json(
       { success: false, error: "Failed to fetch items" },
       { status: 500 }

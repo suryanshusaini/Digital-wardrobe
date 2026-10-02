@@ -68,6 +68,11 @@ export default function ItemCard({
       highlightX.set(cx * 100);
       highlightY.set(cy * 100);
       highlightOpacity.set(0.18);
+
+      if (cardRef.current) {
+        cardRef.current.style.setProperty("--mx", String(cx * 100));
+        cardRef.current.style.setProperty("--my", String(cy * 100));
+      }
     },
     [rotateX, rotateY, highlightX, highlightY, highlightOpacity]
   );
@@ -107,14 +112,14 @@ export default function ItemCard({
   return (
     <motion.div
       ref={cardRef}
-      className="group relative aspect-[3/4] cursor-pointer overflow-hidden rounded-2xl border border-stone-200/60 bg-white shadow-sm dark:border-stone-800 dark:bg-[#1a1714]"
+      className="card card-interactive group relative aspect-[3/4] cursor-pointer overflow-hidden"
       style={{
         perspective: "900px",
         rotateX: rotateXSpring,
         rotateY: rotateYSpring,
         transformStyle: "preserve-3d",
       }}
-      whileTap={{ scale: 0.97 }}
+      whileTap={{ scale: 0.98 }}
       transition={{ duration: 0.15 }}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
@@ -156,7 +161,7 @@ export default function ItemCard({
               <motion.div
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="flex items-center gap-1.5 rounded-full border border-stone-200/80 bg-white/95 p-1 shadow-sm backdrop-blur-sm dark:border-stone-700/80 dark:bg-stone-900/90"
+                className="flex items-center gap-1.5 rounded-full border border-border bg-surface/95 p-1 shadow-sm backdrop-blur-sm"
               >
                 {onEdit && (
                   <button
@@ -164,7 +169,7 @@ export default function ItemCard({
                       e.stopPropagation();
                       onEdit(item);
                     }}
-                    className="rounded-full p-2 text-stone-800 transition-all duration-200 hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] dark:text-stone-200 dark:hover:bg-stone-800"
+                    className="rounded-full p-2 text-foreground transition-all duration-200 hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
                     aria-label={`Edit ${item.name}`}
                   >
                     <Pencil size={13} />
@@ -178,7 +183,7 @@ export default function ItemCard({
                     className={`flex items-center gap-1 rounded-full px-2.5 py-2 text-xs font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50 ${
                       confirmDelete
                         ? "bg-red-500 text-white"
-                        : "text-stone-800 hover:bg-stone-100 dark:text-stone-200 dark:hover:bg-stone-800"
+                        : "text-foreground hover:bg-surface-2"
                     }`}
                     aria-label={
                       confirmDelete

@@ -3,13 +3,41 @@
 import { useState, useRef, useEffect } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { motion, AnimatePresence } from "framer-motion";
-import { LogOut, ChevronUp } from "lucide-react";
+import { LogOut, ChevronUp, Trash2, AlertTriangle, Loader2 } from "lucide-react";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 
 export default function AccountIndicator() {
   const { data: session, status } = useSession();
   const [isOpen, setIsOpen] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmText !== "DELETE") return;
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      const res = await fetch("/api/account", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: "DELETE" }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setDeleteError(data.error || "Failed to delete account.");
+        setIsDeleting(false);
+        return;
+      }
+      // On success, sign out and redirect to /login
+      await signOut({ callbackUrl: "/login" });
+    } catch {
+      setDeleteError("Network error while deleting account. Please try again.");
+      setIsDeleting(false);
+    }
+  };
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -102,15 +130,117 @@ export default function AccountIndicator() {
 
             <button
               onClick={() => signOut({ callbackUrl: "/login" })}
-              className="w-full flex items-center gap-2.5 px-2.5 py-2 text-xs font-medium text-stone-600 hover:text-red-600 hover:bg-red-50/70 rounded-xl transition-colors text-left group"
+              className="w-full flex items-center gap-2.5 px-2.5 py-2 text-xs font-medium text-stone-600 hover:text-stone-900 hover:bg-stone-100 rounded-xl transition-colors text-left group"
             >
               <LogOut
                 size={14}
-                className="text-stone-400 group-hover:text-red-500 transition-colors shrink-0"
+                className="text-stone-400 group-hover:text-stone-600 transition-colors shrink-0"
               />
               <span>Sign out</span>
             </button>
+
+            <button
+              onClick={() => {
+                setIsOpen(false);
+                setShowDeleteModal(true);
+              }}
+              className="w-full flex items-center gap-2.5 px-2.5 py-2 text-xs font-medium text-red-600 hover:text-red-700 hover:bg-red-50/70 rounded-xl transition-colors text-left group mt-0.5"
+            >
+              <Trash2
+                size={14}
+                className="text-red-400 group-hover:text-red-600 transition-colors shrink-0"
+              />
+              <span>Delete Account</span>
+            </button>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Account Deletion Re-Confirmation Modal */}
+      <AnimatePresence>
+        {showDeleteModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0"
+              onClick={() => !isDeleting && setShowDeleteModal(false)}
+            />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 8 }}
+              className="relative w-full max-w-md bg-white dark:bg-[#1a1714] rounded-3xl p-6 shadow-2xl border border-stone-200 dark:border-stone-800 z-10 space-y-4"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/40 flex items-center justify-center text-red-600 dark:text-red-400 shrink-0">
+                  <AlertTriangle size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-serif font-light tracking-tight text-stone-900 dark:text-stone-100">
+                    Delete Account & Wardrobe
+                  </h3>
+                  <p className="text-xs text-stone-500 dark:text-stone-400">
+                    Permanent action — cannot be undone
+                  </p>
+                </div>
+              </div>
+
+              <p className="text-xs text-stone-600 dark:text-stone-300 leading-relaxed">
+                This will permanently delete your account, all archived clothing items, outfits, public share links, and purge all your photos from Cloudinary media storage.
+              </p>
+
+              <div>
+                <label className="block text-[11px] font-medium uppercase tracking-wider text-stone-400 dark:text-stone-500 mb-1.5">
+                  Type <span className="font-mono font-bold text-red-600">DELETE</span> to confirm
+                </label>
+                <input
+                  type="text"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  placeholder="DELETE"
+                  disabled={isDeleting}
+                  className="w-full rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800/60 px-3.5 py-2 text-xs text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20 transition"
+                />
+              </div>
+
+              {deleteError && (
+                <p className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 p-2.5 rounded-xl border border-red-200 dark:border-red-900/30">
+                  {deleteError}
+                </p>
+              )}
+
+              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-stone-100 dark:border-stone-800">
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteModal(false)}
+                  disabled={isDeleting}
+                  className="px-4 py-2 rounded-full border border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300 text-xs font-medium hover:bg-stone-50 dark:hover:bg-stone-800 transition cursor-pointer disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteAccount}
+                  disabled={deleteConfirmText !== "DELETE" || isDeleting}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-red-600 hover:bg-red-700 text-white text-xs font-medium transition cursor-pointer disabled:opacity-50 shadow-xs"
+                >
+                  {isDeleting ? (
+                    <>
+                      <Loader2 size={12} className="animate-spin" />
+                      <span>Deleting…</span>
+                    </>
+                  ) : deleteError ? (
+                    <span>Retry Deletion</span>
+                  ) : (
+                    <span>Permanently Delete</span>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
 

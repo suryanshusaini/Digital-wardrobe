@@ -25,3 +25,34 @@ export function podiumCloudinaryUrl(url: string): string {
   }
   return url.replace("/upload/", "/upload/w_768,h_1024,c_fill,g_auto,f_auto,q_auto/");
 }
+
+/**
+ * Extracts the Cloudinary public_id from a secure asset URL,
+ * stripping transformations, version tags, and file extensions.
+ */
+export function extractCloudinaryPublicId(url: string): string | null {
+  if (!url || typeof url !== "string" || !url.includes("res.cloudinary.com")) return null;
+  try {
+    const uploadIndex = url.indexOf("/upload/");
+    if (uploadIndex === -1) return null;
+    let path = url.slice(uploadIndex + "/upload/".length);
+    path = path.split("?")[0].split("#")[0];
+    const segments = path.split("/");
+    const filtered = segments.filter((seg) => {
+      if (seg.includes(",")) return false;
+      if (/^[a-z]_[a-z0-9]+$/i.test(seg)) return false;
+      if (/^v\d+$/.test(seg)) return false;
+      return true;
+    });
+    if (filtered.length === 0) return null;
+    const lastSeg = filtered[filtered.length - 1];
+    const dotIndex = lastSeg.lastIndexOf(".");
+    if (dotIndex !== -1) {
+      filtered[filtered.length - 1] = lastSeg.slice(0, dotIndex);
+    }
+    return filtered.join("/");
+  } catch {
+    return null;
+  }
+}
+

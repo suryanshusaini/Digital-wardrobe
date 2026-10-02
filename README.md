@@ -129,25 +129,7 @@ npm run start
 
 ## Screenshots
 
-> *Placeholder: Add visual lookbook previews below.*
-
-### 3D Studio Showcase Podium
-| Light Studio Theme | Dark Night Studio Theme |
-|:---:|:---:|
-| ![Podium Light Preview](/public/screenshots/podium-light.png) | ![Podium Dark Preview](/public/screenshots/podium-dark.png) |
-| *Revolving showcase with key/fill lightformers* | *High-contrast shadow matting & dark background* |
-
-### Gallery & Archive Grid
-| Gallery Grid View | Full Detail Modal View |
-|:---:|:---:|
-| ![Gallery Light Preview](/public/screenshots/gallery-light.png) | ![Edit Modal Preview](/public/screenshots/detail-modal.png) |
-| *Uniform 3:4 cards with hover tilt & category pills* | *Full uncropped photo inspect & tag editor* |
-
-### Outfit Maker Studio
-| Staging Canvas | Saved Lookbook |
-|:---:|:---:|
-| ![Outfit Maker Preview](/public/screenshots/outfit-maker.png) | ![Saved Outfits Preview](/public/screenshots/saved-outfits.png) |
-| *Multi-layer drag, scale, and snap coordination* | *Exported outfit coordinates with thumbnail preview* |
+> Visual lookbook previews will be added to `public/screenshots/`.
 
 ---
 

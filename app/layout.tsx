@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import Providers from "@/components/Providers";
-import AccountIndicator from "@/components/layout/AccountIndicator";
 import Footer from "@/components/layout/Footer";
+import { BRAND_NAME, BRAND_TAGLINE, BRAND_SHORT_NAME } from "@/lib/brand";
 
 // Geist fonts served locally — avoids build-time Google Fonts network fetch
 const geistSans = localFont({
@@ -20,21 +20,29 @@ const geistMono = localFont({
   display: "swap",
 });
 
+// Cormorant Garamond — editorial serif headings. The woff2 subset contains
+// weight 400; browsers will synthesise lighter/bolder from this glyph set.
+// Declared as "300 500" so font-light (300) assignments resolve correctly
+// without a separate 300 WOFF2 download.
 const headingSerif = localFont({
   src: "../public/fonts/cormorant-garamond-latin.woff2",
   variable: "--font-heading-serif",
-  weight: "400",
+  weight: "300 500",
   display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "My Wardrobe",
-  description: "Your personal digital closet",
+  metadataBase: new URL(process.env.NEXTAUTH_URL || "https://digital-wardrobe.vercel.app"),
+  title: {
+    default: BRAND_NAME,
+    template: `%s — ${BRAND_NAME}`,
+  },
+  description: BRAND_TAGLINE,
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "My Wardrobe",
+    title: BRAND_SHORT_NAME,
   },
 };
 
@@ -42,7 +50,11 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#f8f7f5",
+  // Light/dark variants — keeps meta themeColor in sync with the CSS theme
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f8f7f5" },
+    { media: "(prefers-color-scheme: dark)", color: "#141210" },
+  ],
 };
 
 // Inline script executed synchronously in <head> to prevent theme flash (FOUC)
@@ -70,7 +82,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <Providers>
           <div className="flex-1 flex flex-col">{children}</div>
           <Footer />
-          <AccountIndicator />
+          {/* AccountIndicator moved into page.tsx header avatar menu */}
         </Providers>
       </body>
     </html>

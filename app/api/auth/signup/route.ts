@@ -26,14 +26,17 @@ export async function POST(req: Request) {
 
     const { name, email, password } = validation.data;
 
-    // ── Rate Limiting (5/min per IP + email) ───────────────────────────────────
-    const rlKey = `${clientIp}:${email}`;
-    const rl = await authLimiter.check(rlKey);
-    if (!rl.allowed) {
+    // ── Rate Limiting (5/min per IP and per email) ───────────────────────────
+    const [ipRl, emailRl] = await Promise.all([
+      authLimiter.check(`ip:${clientIp}`),
+      authLimiter.check(`email:${email.toLowerCase().trim()}`),
+    ]);
+    if (!ipRl.allowed || !emailRl.allowed) {
+      const retryAfter = Math.max(ipRl.retryAfter, emailRl.retryAfter);
       logger.warn("Signup rate limit exceeded", { requestId, clientIp, email });
       return NextResponse.json(
         { error: "Too many attempts. Please try again later." },
-        { status: 429, headers: { "Retry-After": String(rl.retryAfter) } }
+        { status: 429, headers: { "Retry-After": String(retryAfter) } }
       );
     }
 
@@ -72,7 +75,7 @@ export async function POST(req: Request) {
       { status: 201 }
     );
   } catch (error: unknown) {
-    console.error("Signup error:", error);
+    logger.error("Signup error", error, { requestId });
     const message =
       error instanceof Error ? error.message : "Failed to create account.";
     return NextResponse.json({ error: message }, { status: 500 });

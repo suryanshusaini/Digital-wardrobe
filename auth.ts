@@ -7,7 +7,9 @@ import bcrypt from "bcryptjs";
 import { connectDB } from "@/lib/db/mongodb";
 import User from "@/lib/db/models/User";
 
+import { headers } from "next/headers";
 import { authLimiter } from "@/lib/rateLimit";
+import { logger } from "@/lib/logger";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   useSecureCookies: process.env.NODE_ENV === "production",
@@ -44,9 +46,27 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         const cleanEmail = email.toLowerCase().trim();
 
-        // Rate limit credentials login: 5 attempts per minute per email
-        const rl = await authLimiter.check(cleanEmail);
-        if (!rl.allowed) {
+        // Extract client IP from request headers
+        let clientIp = "127.0.0.1";
+        try {
+          const reqHeaders = await headers();
+          const forwarded = reqHeaders.get("x-forwarded-for");
+          if (forwarded) {
+            clientIp = forwarded.split(",")[0].trim();
+          } else {
+            clientIp = reqHeaders.get("x-real-ip")?.trim() || "127.0.0.1";
+          }
+        } catch {
+          // Fallback if invoked outside active request scope
+        }
+
+        // Rate limit credentials login: 5 attempts per minute per email AND per IP
+        const [emailRl, ipRl] = await Promise.all([
+          authLimiter.check(`email:${cleanEmail}`),
+          authLimiter.check(`ip:${clientIp}`),
+        ]);
+
+        if (!emailRl.allowed || !ipRl.allowed) {
           return null;
         }
 
@@ -71,7 +91,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             image: user.image ?? null,
           };
         } catch (err) {
-          console.error("CredentialsProvider authorize error:", err);
+          logger.error("CredentialsProvider authorize error", err);
           return null;
         }
       },

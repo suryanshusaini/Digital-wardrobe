@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { GeminiCategorizeOutputSchema } from "@/lib/validation/schemas";
+import { logger } from "@/lib/logger";
 
 type Category = "top" | "bottom" | "shoes" | "accessory" | "outfit";
 
@@ -175,7 +176,9 @@ Identify its category and output ONLY valid JSON matching this exact schema:
           }
         }
       } catch (geminiError) {
-        console.warn("Gemini vision analysis failed, falling back to heuristics:", geminiError);
+        logger.warn("Gemini vision analysis failed, falling back to heuristics", {
+          error: geminiError instanceof Error ? geminiError.message : "Vision analysis failure",
+        });
       }
     }
 
@@ -189,7 +192,7 @@ Identify its category and output ONLY valid JSON matching this exact schema:
       source: result.source,
     });
   } catch (error) {
-    console.error("Auto-categorize error:", error);
+    logger.error("Auto-categorize error", error);
     return NextResponse.json(
       { success: true, category: "top", weather: [], occasion: [], source: "fallback" },
       { status: 200 }

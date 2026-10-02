@@ -1,0 +1,14 @@
+<!-- Concept A: Hanger whose hook curls into the top of a W -->
+<!-- 24×24 grid, 1.5px stroke, round caps/joins, currentColor -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+  stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
+  aria-hidden="true">
+  <!-- Hook curling into W apex -->
+  <path d="M12 2.5 C12 2.5 14 2.5 14 4.5 C14 6 12 6.5 12 6.5" />
+  <!-- W shape formed from hanger body: left valley, center peak, right valley -->
+  <path d="M3 18 L6.5 11 L10 16 L12 13 L14 16 L17.5 11 L21 18" />
+  <!-- Hanger bar connecting to W sides -->
+  <line x1="3" y1="18" x2="21" y2="18" />
+  <!-- Thin hook-to-W connector line -->
+  <path d="M12 6.5 L12 13" stroke-width="1" opacity="0.5"/>
+</svg>

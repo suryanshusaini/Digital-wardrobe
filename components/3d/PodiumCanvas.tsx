@@ -11,8 +11,6 @@ import {
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import {
   ContactShadows,
-  Environment,
-  Lightformer,
   RoundedBox,
   useTexture,
 } from "@react-three/drei";
@@ -543,7 +541,7 @@ export default function PodiumCanvas({
   return (
     <div
       ref={containerRef}
-      className="h-full w-full outline-none touch-none select-none"
+      className="h-full w-full outline-none select-none"
       tabIndex={0}
       aria-label="3D boutique showcase. Swipe or drag to rotate, use arrow keys to navigate."
       onPointerDown={handlePointerDown}
@@ -557,6 +555,7 @@ export default function PodiumCanvas({
         // Frameloop is completely halted when off-screen, tab hidden, or reduced-motion
         frameloop={!isInView || !tabVisible || (reducedMotion && !isInteracting) ? "never" : "demand"}
         camera={{ position: [0, 1.2, 8.4], fov: 36 }}
+        style={{ touchAction: "pan-y" }}
         gl={{
           powerPreference: "high-performance",
           antialias: true,
@@ -565,6 +564,14 @@ export default function PodiumCanvas({
         onPointerMissed={() => onSelect("")}
         onCreated={({ gl }) => {
           glRef.current = gl;
+          // passive: true — lets the browser compositor scroll the page immediately
+          // without waiting for JS. stopPropagation prevents R3F's internal onWheel
+          // handler from consuming the event after DOM bubbling.
+          gl.domElement.addEventListener(
+            "wheel",
+            (e) => e.stopPropagation(),
+            { passive: true }
+          );
           gl.domElement.addEventListener(
             "webglcontextlost",
             (event: Event) => {
@@ -578,9 +585,10 @@ export default function PodiumCanvas({
         <color attach="background" args={[bgColor]} />
         <fog attach="fog" args={[bgColor, 9, 23]} />
 
-        {/* ── Studio Lighting via self-contained Lightformers ── */}
+        {/* ── Studio Lighting — native Three.js only, no Drei Environment ── */}
         <ambientLight intensity={isDark ? 0.35 : 0.45} />
 
+        {/* Key light — main directional with shadow map */}
         <directionalLight
           castShadow
           position={[3.5, 7, 4]}
@@ -595,37 +603,22 @@ export default function PodiumCanvas({
           shadow-camera-top={6}
           shadow-camera-bottom={-6}
         />
+        {/* Fill light — cool rim from left-rear */}
         <directionalLight position={[-3.5, 2.5, -2]} intensity={0.28} />
+        {/* Warm backlight — separates cards from background */}
         <directionalLight position={[0, 3, -5]} intensity={0.22} color="#fff8f0" />
 
+        {/* Animated spotlight driven by SpotlightRig */}
         <SpotlightRig selectedId={selectedId} isDark={isDark} />
 
-        <Environment resolution={256}>
-          <group rotation={[-Math.PI / 3, 0, 1]}>
-            <Lightformer
-              form="rect"
-              intensity={isDark ? 0.6 : 0.4}
-              position={[0, 5, -9]}
-              scale={[10, 5, 1]}
-              target={[0, 0, 0]}
-            />
-            <Lightformer
-              form="circle"
-              intensity={0.3}
-              position={[6, 2, 1]}
-              scale={3}
-              target={[0, 0, 0]}
-            />
-            <Lightformer
-              form="ring"
-              color="#fbf1ec"
-              intensity={0.25}
-              position={[-6, 4, -1]}
-              scale={4}
-              target={[0, 0, 0]}
-            />
-          </group>
-        </Environment>
+        {/* Soft fill spotLight replacing the Lightformers */}
+        <spotLight
+          position={[-5, 5, 10]}
+          intensity={isDark ? 0.4 : 0.5}
+          penumbra={1}
+          angle={0.5}
+          color={isDark ? "#ffe8d6" : "#ffffff"}
+        />
 
         <ContactShadows
           position={[0, -0.95, 0]}
@@ -633,6 +626,7 @@ export default function PodiumCanvas({
           scale={11}
           blur={3.0}
           far={4}
+          frames={1}
           color={shadowColor}
         />
 

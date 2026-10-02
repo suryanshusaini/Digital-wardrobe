@@ -1,0 +1,19 @@
+<!-- Concept B: Single continuous thread/stitch line looping into a W -->
+<!-- 24×24 grid, 1.5px stroke, round caps/joins, currentColor -->
+<!-- The thread enters from top, loops down forming needle stitch motif, traces a W -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+  stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
+  aria-hidden="true">
+  <!-- Needle eye at top -->
+  <ellipse cx="12" cy="3.5" rx="1.5" ry="1" stroke-width="1.2" />
+  <!-- Thread descending from needle -->
+  <path d="M12 4.5 C12 4.5 10.5 6 10 7" />
+  <!-- W formed as a single continuous stitch path -->
+  <!-- Entry from left, valley left, peak center, valley right, exit right -->
+  <path d="M4 8 C4 8 5 16 7 16 C9 16 10 10 12 10 C14 10 15 16 17 16 C19 16 20 8 20 8" />
+  <!-- Tiny dashes suggesting stitch texture on the W body -->
+  <path d="M6 12 L6.5 12" stroke-width="1" opacity="0.4"/>
+  <path d="M18 12 L17.5 12" stroke-width="1" opacity="0.4"/>
+  <!-- Thread tail looping off end -->
+  <path d="M20 8 C21 7 21.5 6.5 21 5.5" stroke-width="1" opacity="0.6"/>
+</svg>

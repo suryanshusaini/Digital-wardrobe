@@ -1,7 +1,7 @@
 {
-  "name": "My Wardrobe",
+  "name": "Digital Wardrobe",
   "short_name": "Wardrobe",
-  "description": "Your personal digital closet — manage, style, and explore your wardrobe.",
+  "description": "Your closet, curated. Manage, style, and explore your wardrobe.",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
@@ -9,16 +9,22 @@
   "background_color": "#f8f7f5",
   "icons": [
     {
-      "src": "/icon.png",
+      "src": "/icons/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
-      "src": "/icon.png",
+      "src": "/icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ],
   "categories": ["lifestyle", "shopping"],

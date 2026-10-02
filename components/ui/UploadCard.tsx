@@ -32,7 +32,7 @@ function TagPill({
       className={`rounded-full px-3 py-1 text-xs font-medium cursor-pointer transition-colors duration-150 select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
         active
           ? "bg-accent text-accent-foreground shadow-xs hover:bg-accent-hover"
-          : "bg-stone-100 text-stone-600 hover:bg-stone-200 hover:text-stone-900 dark:bg-stone-800 dark:text-stone-300 dark:hover:bg-stone-700"
+          : "bg-surface-2 text-muted hover:text-foreground"
       }`}
     >
       {label}
@@ -379,19 +379,19 @@ export default function UploadCard({
       <motion.div
         initial={{ opacity: 0, scale: 0.97 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="w-full space-y-4 rounded-3xl border border-stone-200/60 bg-white p-5 shadow-sm dark:border-stone-800 dark:bg-[#1a1714]"
+        className="w-full space-y-4 card p-5"
       >
         {/* File info */}
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-stone-100 dark:bg-stone-800 flex items-center justify-center shrink-0">
-            <UploadCloud size={18} className="text-stone-400 dark:text-stone-300" />
+          <div className="w-11 h-11 rounded-2xl bg-surface-2 flex items-center justify-center shrink-0">
+            <UploadCloud size={18} className="text-muted" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-stone-900 dark:text-stone-100 truncate">
+            <p className="text-sm font-medium text-foreground truncate">
               {selectedFile.name}
             </p>
             <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-xs text-stone-400 dark:text-stone-500">
+              <span className="text-xs text-muted">
                 {(selectedFile.size / 1024 / 1024).toFixed(2)} MB · Tag before archiving
               </span>
               {/\.(heic|heif)$/i.test(selectedFile.name) && (
@@ -481,7 +481,7 @@ export default function UploadCard({
               </span>
               <span>{uploadProgress}%</span>
             </div>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-stone-100 dark:bg-stone-800">
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
               <div
                 className={`h-full rounded-full bg-accent transition-all duration-300 ${
                   isProcessing ? "w-full animate-pulse" : ""
@@ -494,7 +494,7 @@ export default function UploadCard({
 
         {/* Error message with retry */}
         {errorMessage && (
-          <div className="flex items-center gap-2 rounded-xl bg-red-50 p-2.5 text-xs text-red-600 dark:bg-red-950/40 dark:text-red-400">
+          <div className="flex items-center gap-2 rounded-xl bg-destructive-bg p-2.5 text-xs text-destructive">
             <AlertCircle size={14} className="shrink-0" />
             <span className="flex-1">{errorMessage}</span>
             <button
@@ -536,8 +536,8 @@ export default function UploadCard({
     <motion.div
       className={`relative flex cursor-pointer flex-col items-center justify-center overflow-hidden rounded-3xl border-2 border-dashed p-6 transition-all duration-300 ease-out ${
         isDragOver
-          ? "border-accent bg-accent-light/50 dark:border-accent dark:bg-stone-800/90 scale-[1.015]"
-          : "border-stone-200/80 bg-white hover:border-stone-300 dark:border-stone-800 dark:bg-[#1a1714]"
+          ? "border-accent bg-accent-soft/40 scale-[1.015]"
+          : "border-border bg-surface hover:border-border-strong"
       }`}
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
@@ -547,7 +547,7 @@ export default function UploadCard({
       transition={{ type: "spring", stiffness: 300 }}
     >
       {isDragOver && (
-        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-accent-light/70 dark:bg-stone-900/80 backdrop-blur-[2px] pointer-events-none">
+        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-accent-soft/80 backdrop-blur-[2px] pointer-events-none">
           <UploadCloud size={38} className="text-accent animate-bounce mb-1" />
           <span className="text-xs font-semibold text-accent tracking-wider uppercase">
             Release to archive piece
@@ -562,12 +562,12 @@ export default function UploadCard({
         onChange={handleFileSelect}
         aria-label="Upload wardrobe photo"
       />
-      <div className="flex flex-col items-center text-stone-400 dark:text-stone-500 pointer-events-none">
+      <div className="flex flex-col items-center text-muted pointer-events-none">
         <UploadCloud size={32} className={`mb-2 transition-transform duration-300 ${isDragOver ? "scale-110 text-accent" : ""}`} />
-        <span className="text-sm font-medium text-stone-700 dark:text-stone-300">
+        <span className="text-sm font-medium text-foreground">
           Add to wardrobe
         </span>
-        <span className="text-xs text-stone-400 dark:text-stone-500 mt-0.5">
+        <span className="text-xs text-muted mt-0.5">
           {isDragOver ? "Drop photo to upload" : "Drop image or click to browse"}
         </span>
       </div>
@@ -588,7 +588,7 @@ export default function UploadCard({
             className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
               category === cat
                 ? "bg-accent text-accent-foreground shadow-2xs"
-                : "bg-stone-100 text-stone-600 hover:bg-stone-200 dark:bg-stone-800 dark:text-stone-400 dark:hover:bg-stone-700"
+                : "bg-surface-2 text-muted hover:text-foreground"
             }`}
           >
             {cap(cat)}

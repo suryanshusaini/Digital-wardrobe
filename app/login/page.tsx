@@ -6,6 +6,8 @@ import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import Logo from "@/components/brand/Logo";
+import { BRAND_NAME, BRAND_TAGLINE } from "@/lib/brand";
 
 function getErrorMessage(errorCode: string | null): string | null {
   if (!errorCode) return null;
@@ -72,14 +74,14 @@ function LoginForm() {
     <div className="w-full max-w-md rounded-3xl bg-surface p-8 shadow-sm border border-border transition-colors">
       {/* Brand header */}
       <div className="text-center mb-8">
-        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-border bg-surface text-foreground font-serif text-xl shadow-2xs">
-          W
+        <div className="mx-auto mb-5 flex justify-center text-foreground">
+          <Logo variant="mark" size={40} animated />
         </div>
         <h1 className="text-2xl sm:text-3xl font-serif font-light tracking-tight text-foreground">
-          My Wardrobe
+          {BRAND_NAME}
         </h1>
         <p className="mt-1.5 text-xs sm:text-sm text-muted">
-          Your personal digital closet
+          {BRAND_TAGLINE}
         </p>
       </div>
 

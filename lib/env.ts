@@ -1,22 +1,32 @@
 import { z } from "zod";
 
-const EnvSchema = z.object({
-  MONGODB_URI: z.string().min(1, "MONGODB_URI is required"),
-  AUTH_SECRET: z.string().min(1, "AUTH_SECRET or NEXTAUTH_SECRET is required").optional(),
-  NEXTAUTH_SECRET: z.string().min(1).optional(),
-  CLOUDINARY_CLOUD_NAME: z.string().min(1, "CLOUDINARY_CLOUD_NAME is required"),
-  CLOUDINARY_API_KEY: z.string().min(1, "CLOUDINARY_API_KEY is required"),
-  CLOUDINARY_API_SECRET: z.string().min(1, "CLOUDINARY_API_SECRET is required"),
+const EnvSchema = z
+  .object({
+    MONGODB_URI: z.string().min(1, "MONGODB_URI is required"),
+    AUTH_SECRET: z.string().min(1).optional(),
+    NEXTAUTH_SECRET: z.string().min(1).optional(),
+    CLOUDINARY_CLOUD_NAME: z.string().min(1, "CLOUDINARY_CLOUD_NAME is required"),
+    CLOUDINARY_API_KEY: z.string().min(1, "CLOUDINARY_API_KEY is required"),
+    CLOUDINARY_API_SECRET: z.string().min(1, "CLOUDINARY_API_SECRET is required"),
 
-  // Optional integrations
-  GEMINI_API_KEY: z.string().optional(),
-  GOOGLE_CLIENT_ID: z.string().optional(),
-  GOOGLE_CLIENT_SECRET: z.string().optional(),
-  UPSTASH_REDIS_REST_URL: z.string().url().optional(),
-  UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
-  ENABLE_SENTRY: z.enum(["true", "false"]).optional(),
-  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-});
+    // Optional integrations
+    GEMINI_API_KEY: z.string().optional(),
+    GOOGLE_CLIENT_ID: z.string().optional(),
+    GOOGLE_CLIENT_SECRET: z.string().optional(),
+    AUTH_GOOGLE_ID: z.string().optional(),
+    AUTH_GOOGLE_SECRET: z.string().optional(),
+    UPSTASH_REDIS_REST_URL: z.string().url().optional(),
+    UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
+    ENABLE_SENTRY: z.enum(["true", "false"]).optional(),
+    NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  })
+  .refine(
+    (data) => Boolean(data.AUTH_SECRET || data.NEXTAUTH_SECRET),
+    {
+      message: "AUTH_SECRET (or NEXTAUTH_SECRET) is required",
+      path: ["AUTH_SECRET"],
+    }
+  );
 
 export type Env = z.infer<typeof EnvSchema>;
 

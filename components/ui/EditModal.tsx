@@ -10,6 +10,9 @@ const CATEGORIES = ["top", "bottom", "shoes", "accessory", "outfit"] as const;
 const WEATHER_TAGS = ["sunny", "rainy", "cold", "hot", "mild"];
 const OCCASION_TAGS = ["casual", "formal", "sport", "party", "beach"];
 
+const BLUR_DATA_URL =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
 function cap(s: string) {
   return s === "outfit" ? "Outfit" : s.charAt(0).toUpperCase() + s.slice(1);
 }
@@ -148,6 +151,8 @@ export default function EditModal({ item, onClose, onSave }: EditModalProps) {
                 src={optimizeCloudinaryUrl(item.imageUrl)}
                 alt={item.name}
                 fill
+                placeholder="blur"
+                blurDataURL={BLUR_DATA_URL}
                 className="object-contain p-2 rounded-xl"
                 sizes="(max-width: 640px) 90vw, 400px"
               />

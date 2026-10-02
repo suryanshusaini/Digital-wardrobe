@@ -1,0 +1,11 @@
+<!-- app/icon.svg — Concept C mark as favicon -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+  stroke="#1c1917" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M12 2 C12 2 13.5 2 13.5 3.5 C13.5 4.8 12 5.2 12 5.2" />
+  <path d="M12 5.2 C12 5.2 8 6.5 4.5 10" />
+  <path d="M12 5.2 C12 5.2 16 6.5 19.5 10" />
+  <path d="M4.5 10 L3.5 17.5" />
+  <path d="M19.5 10 L20.5 17.5" />
+  <path d="M3.5 17.5 L20.5 17.5" />
+  <circle cx="12" cy="13" r="1.2" fill="#b85d3b" stroke="none" />
+</svg>

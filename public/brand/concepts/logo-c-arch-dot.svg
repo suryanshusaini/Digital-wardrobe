@@ -1,0 +1,19 @@
+<!-- Concept C (DEFAULT): Minimal arch hanger + small accent dot -->
+<!-- 24×24 grid, 1.5px stroke, round caps/joins, currentColor -->
+<!-- Clean geometric arch — legible at 16px favicon size -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+  stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
+  aria-hidden="true">
+  <!-- Hook: small curl at top-center -->
+  <path d="M12 2 C12 2 13.5 2 13.5 3.5 C13.5 4.8 12 5.2 12 5.2" />
+  <!-- Arch shoulder: symmetric arc from hook-base out to rod ends -->
+  <path d="M12 5.2 C12 5.2 8 6.5 4.5 10" />
+  <path d="M12 5.2 C12 5.2 16 6.5 19.5 10" />
+  <!-- Horizontal bar -->
+  <line x1="3.5" y1="17.5" x2="20.5" y2="17.5" />
+  <!-- Left and right vertical drops from arch to bar -->
+  <line x1="4.5" y1="10" x2="3.5" y2="17.5" />
+  <line x1="19.5" y1="10" x2="20.5" y2="17.5" />
+  <!-- Accent dot: small filled circle, terracotta in context via CSS fill -->
+  <circle cx="12" cy="13" r="1.2" fill="currentColor" stroke="none" opacity="0.5"/>
+</svg>

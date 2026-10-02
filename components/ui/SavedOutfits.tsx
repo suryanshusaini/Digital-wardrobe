@@ -16,6 +16,9 @@ import {
 import { optimizeCloudinaryUrl } from "@/lib/cloudinaryUrl";
 import { useToast } from "@/components/ui/Toast";
 
+const BLUR_DATA_URL =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
 export interface SavedOutfitItem {
   itemId: string;
   imageUrl: string;
@@ -232,6 +235,8 @@ export default function SavedOutfits({
                             src={optimizeCloudinaryUrl(item.imageUrl)}
                             alt="Clothing piece"
                             fill
+                            placeholder="blur"
+                            blurDataURL={BLUR_DATA_URL}
                             className="object-contain"
                             sizes="120px"
                             draggable={false}
@@ -408,6 +413,8 @@ export default function SavedOutfits({
                         src={optimizeCloudinaryUrl(item.imageUrl)}
                         alt="Outfit piece"
                         fill
+                        placeholder="blur"
+                        blurDataURL={BLUR_DATA_URL}
                         className="object-contain"
                         sizes="200px"
                       />

@@ -48,7 +48,11 @@ export async function DELETE(
         { $pull: { items: { itemId: id } } }
       );
     } catch (cascadeError) {
-      console.warn("Failed to cascade delete item from outfits:", cascadeError);
+      logger.warn("Failed to cascade delete item from outfits", {
+        requestId,
+        itemId: id,
+        error: cascadeError instanceof Error ? cascadeError.message : "Cascade error",
+      });
     }
 
     return NextResponse.json({ success: true }, { status: 200 });

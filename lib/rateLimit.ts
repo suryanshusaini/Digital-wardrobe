@@ -240,6 +240,18 @@ export const authLimiter = new RateLimiter(
   LIMIT_CONSTANTS.AUTH_MAX
 );
 
+export const healthLimiter = new RateLimiter(
+  "health",
+  60_000,
+  60
+);
+
+export const accountDeleteLimiter = new RateLimiter(
+  "account:delete",
+  60_000,
+  5
+);
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 export function getClientIp(req: Request): string {
   const forwarded = req.headers.get("x-forwarded-for");

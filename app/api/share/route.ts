@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
 
     const rl = await shareCreateLimiter.check(userEmail);
     if (!rl.allowed) {
-      logger.warn("Share link rate limit exceeded", { requestId, userEmail });
+      logger.warn("Share link rate limit exceeded", { requestId });
       return NextResponse.json(
         { error: "Too many share requests. Please wait a moment." },
         { status: 429, headers: { "Retry-After": String(rl.retryAfter) } }
@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
       shareUrl,
     });
   } catch (error) {
-    console.error("Generate share link error:", error);
+    logger.error("Generate share link error", error, { requestId });
     return NextResponse.json(
       { error: "Failed to generate share link" },
       { status: 500 }
@@ -62,6 +62,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const requestId = getRequestId(req);
   try {
     const session = await auth();
     if (!session?.user?.email) {
@@ -72,6 +73,17 @@ export async function DELETE(req: NextRequest) {
     const userName = session.user.name || "User";
 
     await connectToDatabase();
+
+    const action = req.nextUrl.searchParams.get("action");
+    if (action === "revoke_only") {
+      await ShareLink.findOneAndDelete({ userId: userEmail });
+      return NextResponse.json({
+        success: true,
+        revoked: true,
+        shareUrl: null,
+        message: "Share link revoked. Your wardrobe is now private.",
+      });
+    }
 
     const newToken = crypto.randomUUID();
     const link = await ShareLink.findOneAndUpdate(
@@ -90,7 +102,7 @@ export async function DELETE(req: NextRequest) {
       message: "Share link revoked and regenerated",
     });
   } catch (error) {
-    console.error("Revoke share link error:", error);
+    logger.error("Revoke share link error", error, { requestId });
     return NextResponse.json(
       { error: "Failed to revoke share link" },
       { status: 500 }

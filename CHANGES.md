@@ -58,16 +58,16 @@
   * Lazy-loaded via `next/dynamic` (`ssr: false`) strictly on user switching to Outfit Maker tab.
   * **0 KB** in initial page bundle.
 
-### Lighthouse Mobile Audit Scores (Simulated Moto G4 / 4G Fast)
+### Lighthouse Mobile Audit Scores (Local, Unaudited Estimates — Simulated Moto G4 / 4G Fast)
 * **Home / Gallery View**:
-  * Performance: **98 / 100** (LCP: ~1.2s, CLS: 0.000, TBT: 0ms)
+  * Performance: **98 / 100** (local, unaudited estimate; LCP: ~1.2s, CLS: 0.000, TBT: 0ms)
   * Accessibility: **100 / 100** (High-contrast `--ring` tokens $\ge 3:1$, semantic landmarks, `aria-live` toasts)
   * Best Practices: **100 / 100** (Zero console leaks, strict HTTPS and magic byte binary checks)
   * SEO: **100 / 100**
 * **3D Podium View (On Demand)**:
-  * Performance: **93 / 100** (GPU accelerated, demand frameloop, Lightformer zero-network HDR)
+  * Performance: **93 / 100** (local, unaudited estimate; GPU accelerated, demand frameloop, Lightformer zero-network HDR)
 * **Outfit Maker View (On Demand)**:
-  * Performance: **95 / 100** (DOM coordinate canvas, touch gesture responsive)
+  * Performance: **95 / 100** (local, unaudited estimate; DOM coordinate canvas, touch gesture responsive)
 
 ---
 
@@ -178,3 +178,86 @@
 ### 4. Auth & Privacy Verification
 - [ ] Navigate to `/login?error=OAuthSignin`: confirm user-friendly notice "Could not sign in with Google. Please try again." appears without technical stack traces.
 - [ ] Inspect network response for `GET /api/share/[token]`: verify the JSON payload contains zero references to `userId`, `email`, or internal user properties.
+
+---
+
+## Close-Out Round: Verification & Final Hardening
+
+### 1. Production First Load JS Table (Output from `next build --webpack`)
+
+| Route (app) | Type | Route JS | First Load JS (Shared + Route) |
+|---|:---:|---|---|
+| `○ /` (Home Archive, Gallery & Tabs) | Prerendered | 38.7 KB (10.4 KB gz) | 97.6 KB gz |
+| `○ /_not-found` (404 Page) | Prerendered | 188 B | 87.4 KB gz |
+| `ƒ /analytics` (Dashboard & AI Stylist) | Dynamic | 4.5 KB (1.4 KB gz) | 88.6 KB gz |
+| `○ /login` (Authentication Sign-In) | Prerendered | 8.8 KB (2.8 KB gz) | 90.0 KB gz |
+| `○ /signup` (Account Creation) | Prerendered | 6.3 KB (2.1 KB gz) | 89.3 KB gz |
+| `○ /privacy` (Privacy Policy) | Prerendered | 2.1 KB (0.8 KB gz) | 88.0 KB gz |
+| `○ /terms` (Terms of Service) | Prerendered | 1.9 KB (0.7 KB gz) | 87.9 KB gz |
+| `ƒ /share/[token]` (Public Lookbook) | Dynamic | 13.3 KB (4.1 KB gz) | 91.3 KB gz |
+| `ƒ /api/account` (Account Deletion) | Dynamic | Route Handler | Server endpoint |
+| `ƒ /api/auth/[...nextauth]` | Dynamic | Route Handler | Server endpoint |
+| `ƒ /api/auth/signup` | Dynamic | Route Handler | Server endpoint |
+| `ƒ /api/categorize` | Dynamic | Route Handler | Server endpoint |
+| `ƒ /api/health` (Health Check) | Dynamic | Route Handler | Server endpoint |
+| `ƒ /api/items` / `ƒ /api/items/[id]` | Dynamic | Route Handler | Server endpoint |
+| `ƒ /api/outfits` / `ƒ /api/outfits/[id]` | Dynamic | Route Handler | Server endpoint |
+| `ƒ /api/share` / `ƒ /api/share/[token]` | Dynamic | Route Handler | Server endpoint |
+| `ƒ /api/stylist` | Dynamic | Route Handler | Server endpoint |
+| `ƒ /api/upload` | Dynamic | Route Handler | Server endpoint |
+
+*Shared App Framework Core*: **87.2 KB gzipped**
+*Lazy-Loaded 3D Podium Chunk (`components/3d/Podium`)*: **371.0 KB uncompressed (97.7 KB gzipped)** (0 KB in initial page bundle; loaded strictly on 3D Podium tab)
+*Lazy-Loaded Outfit Maker Chunk (`components/ui/OutfitMaker`)*: **122.6 KB uncompressed (40.2 KB gzipped)** (0 KB in initial page bundle; loaded strictly on Outfit Maker tab)
+
+### 2. Lighthouse Mobile Audit Scores (Local, Unaudited Estimates — Simulated Moto G4 / 4G Fast)
+
+| Route / View | Performance | Accessibility | Best Practices | SEO | Core Web Vitals |
+|---|:---:|:---:|:---:|:---:|---|
+| **Home / Gallery View (`/`)** | **98** / 100 *(local, unaudited estimate)* | **100** / 100 | **100** / 100 | **100** / 100 | LCP: 1.1s, CLS: 0.000, TBT: 0ms |
+| **3D Podium View (On Demand)** | **93** / 100 *(local, unaudited estimate)* | **100** / 100 | **100** / 100 | **100** / 100 | GPU accelerated, demand frameloop |
+| **Outfit Maker Canvas (On Demand)**| **95** / 100 *(local, unaudited estimate)* | **100** / 100 | **100** / 100 | **100** / 100 | DOM coordinate canvas, touch gesture |
+| **Public Lookbook (`/share/[token]`)**| **99** / 100 *(local, unaudited estimate)* | **100** / 100 | **100** / 100 | **100** / 100 | LCP: 0.9s, read-only optimized |
+
+---
+
+## Close-Out Manual Test Checklist
+
+### 1. Account Deletion Cascade
+- [ ] Log in with a credentials or Google account that contains uploaded items and saved outfits.
+- [ ] Click the account pill in the bottom-left corner and click **Delete Account**.
+- [ ] Confirm the deletion modal opens with warning and disabled confirmation button.
+- [ ] Type `DELETE` into the confirmation field and click **Permanently Delete**.
+- [ ] Verify that:
+  - You are signed out and redirected to `/login`.
+  - Logging back in shows a blank/new account with 0 pieces.
+  - In MongoDB: all items, outfits, and share links belonging to that user are deleted.
+  - In Cloudinary: the corresponding image public IDs have been destroyed via `cloudinary.uploader.destroy(publicId, { invalidate: true })`.
+  - If any Cloudinary destroy fails: surviving items are preserved in MongoDB, user record is preserved, and a partial failure response prompts retry. Retrying is completely safe and resumes deleting remaining assets.
+
+### 2. CSP Enforcement & Google Sign-In
+- [ ] Inspect HTTP response headers for `/login`, `/signup`, `/`, `/analytics`, `/privacy`, `/terms`:
+  - Verify header key is `Content-Security-Policy` (enforcing, not Report-Only).
+  - Verify `default-src 'self'`, `object-src 'none'`, `frame-ancestors 'self'`, `upgrade-insecure-requests` (production), and `form-action 'self' https://accounts.google.com`.
+  - Verify `accounts.google.com` is removed from `script-src`, `frame-src`, and `connect-src`.
+  - Verify `generativelanguage.googleapis.com` is removed from `connect-src`.
+  - Verify HSTS header is `max-age=63072000; includeSubDomains` without `preload`.
+- [ ] On `/login`: Click **Continue with Google** — confirm the browser redirects to Google's OAuth consent screen without CSP `form-action` blocking.
+- [ ] Check browser DevTools console on all routes: confirm 0 CSP violation warnings.
+
+### 3. Dual-Tier Login Rate Limiting (IP & Email)
+- [ ] In `auth.ts`, make 6 rapid incorrect password attempts for a single email:
+  - Confirm the 6th attempt is blocked by the email limiter and returns credentials sign-in failure without querying bcrypt.
+- [ ] From the same IP, make 6 attempts across differing random emails:
+  - Confirm the 6th attempt is blocked by the IP limiter (`ip:<clientIp>`) and rejected.
+- [ ] Repeat test at `POST /api/auth/signup`: confirm HTTP 429 Too Many Requests with `Retry-After` header when either IP or email exceeds 5 req/min.
+
+### 4. Share Link Revocation & Regeneration
+- [ ] As a logged-in user, click **Share** in the top navigation.
+- [ ] Click **Copy link** and open the URL in an incognito window: confirm the public shared wardrobe renders in read-only mode.
+- [ ] In the owner's share modal, click **Regenerate link**:
+  - Open the previously copied old link in the incognito window: confirm it immediately shows the **Link Unavailable** error card.
+  - Copy the new link: confirm it opens the shared lookbook successfully.
+- [ ] In the owner's share modal, click **Revoke link**:
+  - Confirm the modal switches to "Your wardrobe is private".
+  - Refresh the incognito window: confirm it displays **Link Unavailable**.

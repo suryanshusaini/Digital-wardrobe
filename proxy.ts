@@ -21,11 +21,15 @@ export const config = {
      *   _next/static  — compiled JS/CSS bundles
      *   _next/image   — Next.js image optimiser
      *   favicon.ico   — browser icon
+     *   manifest.json — PWA web app manifest
+     *   icon.png      — PWA/app icon
      *   api/auth      — NextAuth's own endpoints (sign-in, callback, etc.)
      *   login         — the sign-in page itself (would create an infinite loop)
      *   share         — public read-only shared wardrobe views
      *   api/share     — public share endpoint
+     *   api/health    — automated health monitoring
+     *   privacy/terms — public legal and policy documentation
      */
-    "/((?!_next/static|_next/image|favicon.ico|icon|api/auth|login|signup|share|api/share).*)",
+    "/((?!_next/static|_next/image|favicon.ico|manifest.json|icon.png|api/auth|api/health|login|signup|share|api/share|privacy|terms).*)",
   ],
 };

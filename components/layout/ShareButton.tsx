@@ -59,7 +59,7 @@ export default function ShareButton() {
     }
   };
 
-  const handleRevoke = async () => {
+  const handleRegenerate = async () => {
     setIsRevoking(true);
     setError(null);
     try {
@@ -67,6 +67,25 @@ export default function ShareButton() {
       const data = await res.json();
       if (data.success && data.shareUrl) {
         setShareUrl(data.shareUrl);
+      } else {
+        setError(data.error || "Failed to regenerate link");
+      }
+    } catch (err) {
+      console.error("Regenerate error:", err);
+      setError("Failed to regenerate link");
+    } finally {
+      setIsRevoking(false);
+    }
+  };
+
+  const handleRevokeOnly = async () => {
+    setIsRevoking(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/share?action=revoke_only", { method: "DELETE" });
+      const data = await res.json();
+      if (data.success) {
+        setShareUrl("");
       } else {
         setError(data.error || "Failed to revoke link");
       }
@@ -142,7 +161,7 @@ export default function ShareButton() {
                 <div className="p-3 bg-red-50 text-red-600 rounded-xl text-xs">
                   {error}
                 </div>
-              ) : (
+              ) : shareUrl ? (
                 <div className="space-y-3">
                   <div className="flex items-center gap-2 p-1.5 bg-stone-50 border border-stone-200 rounded-2xl">
                     <input
@@ -177,26 +196,49 @@ export default function ShareButton() {
                     They cannot edit, upload, or see your private account details.
                   </p>
                 </div>
+              ) : (
+                <div className="rounded-2xl border border-stone-200 bg-stone-50/70 p-4 text-center space-y-2">
+                  <p className="text-xs text-stone-600 font-medium">Your wardrobe is private.</p>
+                  <button
+                    onClick={handleRegenerate}
+                    disabled={isRevoking}
+                    className="rounded-full bg-accent px-4 py-2 text-xs font-medium text-accent-foreground hover:bg-accent-hover transition-all cursor-pointer"
+                  >
+                    Generate Share Link
+                  </button>
+                </div>
               )}
 
               {/* Footer actions */}
-              <div className="pt-2 border-t border-stone-100 flex items-center justify-between">
-                <button
-                  onClick={handleRevoke}
-                  disabled={isRevoking || isLoading}
-                  className="flex items-center gap-1.5 text-xs text-stone-500 hover:text-red-600 transition-colors disabled:opacity-50 cursor-pointer"
-                  title="Generate a brand-new link, invalidating previous ones"
-                >
-                  <RefreshCw
-                    size={12}
-                    className={isRevoking ? "animate-spin" : ""}
-                  />
-                  <span>Revoke & generate new link</span>
-                </button>
+              <div className="pt-2 border-t border-stone-100 flex flex-wrap items-center justify-between gap-2">
+                {shareUrl && (
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={handleRegenerate}
+                      disabled={isRevoking || isLoading}
+                      className="flex items-center gap-1.5 text-xs text-stone-500 hover:text-stone-900 transition-colors disabled:opacity-50 cursor-pointer"
+                      title="Generate a brand-new link, invalidating the previous one"
+                    >
+                      <RefreshCw
+                        size={12}
+                        className={isRevoking ? "animate-spin" : ""}
+                      />
+                      <span>Regenerate link</span>
+                    </button>
+                    <button
+                      onClick={handleRevokeOnly}
+                      disabled={isRevoking || isLoading}
+                      className="text-xs text-red-500 hover:text-red-700 transition-colors disabled:opacity-50 cursor-pointer"
+                      title="Revoke the link entirely and make wardrobe private"
+                    >
+                      Revoke link
+                    </button>
+                  </div>
+                )}
 
                 <button
                   onClick={() => setIsOpen(false)}
-                  className="px-4 py-2 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-medium transition-all duration-150 active:scale-[0.98] cursor-pointer"
+                  className="ml-auto px-4 py-2 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-medium transition-all duration-150 active:scale-[0.98] cursor-pointer"
                 >
                   Done
                 </button>

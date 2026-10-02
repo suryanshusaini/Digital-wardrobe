@@ -6,6 +6,8 @@ import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
+import Logo from "@/components/brand/Logo";
+import { BRAND_NAME } from "@/lib/brand";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -61,11 +63,11 @@ export default function SignupPage() {
       <div className="w-full max-w-md rounded-3xl bg-surface p-8 shadow-sm border border-border transition-colors">
         {/* Brand header */}
         <div className="text-center mb-8">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-border bg-surface text-foreground font-serif text-xl shadow-2xs">
-            W
+          <div className="mx-auto mb-5 flex justify-center text-foreground">
+            <Logo variant="mark" size={40} animated />
           </div>
           <h1 className="text-2xl sm:text-3xl font-serif font-light tracking-tight text-foreground">
-            Create your account
+            {BRAND_NAME}
           </h1>
           <p className="mt-1.5 text-xs sm:text-sm text-muted">
             Start building your digital wardrobe
@@ -158,7 +160,25 @@ export default function SignupPage() {
           </button>
         </form>
 
-        <p className="mt-6 text-center text-xs text-muted">
+        <p className="mt-4 text-center text-[11px] text-muted leading-relaxed">
+          By signing up, you agree to our{" "}
+          <Link
+            href="/terms"
+            className="font-medium text-foreground underline underline-offset-2 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] rounded-xs"
+          >
+            Terms of Service
+          </Link>{" "}
+          and{" "}
+          <Link
+            href="/privacy"
+            className="font-medium text-foreground underline underline-offset-2 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] rounded-xs"
+          >
+            Privacy Policy
+          </Link>
+          .
+        </p>
+
+        <p className="mt-4 text-center text-xs text-muted">
           Already have an account?{" "}
           <Link
             href="/login"
