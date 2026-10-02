@@ -6,6 +6,7 @@ import { auth } from "@/auth";
 import { uploadLimiter } from "@/lib/rateLimit";
 import { ItemCreateSchema } from "@/lib/validation/schemas";
 import { logger, getRequestId } from "@/lib/logger";
+import sharp from "sharp";
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -110,6 +111,18 @@ export async function POST(req: Request) {
       );
     }
 
+    // Extract dominant color for smooth card blur-up placeholder
+    let dominantColor: string | null = null;
+    try {
+      if (!isHeic) {
+        const { data } = await sharp(buffer).resize(1, 1).raw().toBuffer({ resolveWithObject: true });
+        const [r, g, b] = data;
+        dominantColor = `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+      }
+    } catch {
+      // Fallback
+    }
+
     // Stream uploaded image directly to Cloudinary without processing
     const cloudinaryResponse = await new Promise<UploadApiResponse>((resolve, reject) => {
       cloudinary.uploader
@@ -127,6 +140,8 @@ export async function POST(req: Request) {
       imageUrl: cloudinaryResponse.secure_url,
       tags: { weather, occasion },
       userId: userEmail,
+      favourite: false,
+      dominantColor: dominantColor ?? "#f5f5f4",
     });
 
     return NextResponse.json({ success: true, item: newItem });

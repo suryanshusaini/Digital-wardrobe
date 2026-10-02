@@ -28,6 +28,8 @@ export const ItemCreateSchema = z.object({
   category: CategorySchema,
   weather: z.array(WeatherTagSchema).max(10).default([]),
   occasion: z.array(OccasionTagSchema).max(10).default([]),
+  favourite: z.boolean().optional(),
+  dominantColor: z.string().trim().max(30).optional(),
 });
 
 export const ItemUpdateSchema = z.object({
@@ -35,6 +37,8 @@ export const ItemUpdateSchema = z.object({
   category: CategorySchema.optional(),
   weather: z.array(WeatherTagSchema).max(10).optional(),
   occasion: z.array(OccasionTagSchema).max(10).optional(),
+  favourite: z.boolean().optional(),
+  dominantColor: z.string().trim().max(30).optional(),
 });
 
 // ── Outfit Schemas ───────────────────────────────────────────────────────────

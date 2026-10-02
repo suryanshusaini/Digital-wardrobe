@@ -95,11 +95,13 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid item update data" }, { status: 400 });
   }
 
-  const { name, category, weather, occasion } = bodyValidation.data;
+  const { name, category, weather, occasion, favourite, dominantColor } = bodyValidation.data;
 
   const update: Record<string, unknown> = {};
   if (name !== undefined) update.name = name;
   if (category !== undefined) update.category = category;
+  if (favourite !== undefined) update.favourite = favourite;
+  if (dominantColor !== undefined) update.dominantColor = dominantColor;
   if (weather !== undefined || occasion !== undefined) {
     update.tags = {
       ...(weather !== undefined ? { weather } : {}),

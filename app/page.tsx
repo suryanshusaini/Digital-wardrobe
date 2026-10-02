@@ -17,18 +17,24 @@ import {
   Search,
   X,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   LogOut,
   Trash2,
   Moon,
   Sun,
   Monitor,
+  Heart,
+  Rows,
+  Check,
   type LucideIcon,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import UploadCard from "@/components/ui/UploadCard";
-import ItemCard from "@/components/ui/ItemCard";
+import ItemCard, { type WardrobeItem } from "@/components/ui/ItemCard";
+import ItemDetailSheet from "@/components/ui/ItemDetailSheet";
 import EditModal from "@/components/ui/EditModal";
 import SavedOutfits, { type SavedOutfit } from "@/components/ui/SavedOutfits";
 import ShareButton from "@/components/layout/ShareButton";
@@ -42,7 +48,7 @@ import BottomTabBar from "@/components/layout/BottomTabBar";
 import StitchLoader from "@/components/ui/StitchLoader";
 import TodaysPick from "@/components/ui/TodaysPick";
 import OnboardingChecklist, { markPodiumOpened } from "@/components/ui/OnboardingChecklist";
-import { viewTransition } from "@/lib/motion";
+import { viewTransition, springPremium } from "@/lib/motion";
 import { BRAND_NAME } from "@/lib/brand";
 
 // ── Dynamic imports — zero initial bundle ─────────────────────────────────
@@ -72,15 +78,7 @@ const OutfitMaker = dynamic(() => import("@/components/ui/OutfitMaker"), {
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type ViewMode = "gallery" | "outfitmaker" | "podium" | "outfits";
-
-interface WardrobeItem {
-  _id: string;
-  name: string;
-  category: string;
-  imageUrl: string;
-  tags?: { weather: string[]; occasion: string[] };
-  createdAt?: string;
-}
+type SortOption = "newest" | "oldest" | "name" | "category";
 
 const CATEGORY_ROWS: { key: string; label: string }[] = [
   { key: "top", label: "Tops" },
@@ -121,8 +119,55 @@ function HomeInner() {
   const [editingItem, setEditingItem] = useState<WardrobeItem | null>(null);
   const [editingOutfit, setEditingOutfit] = useState<SavedOutfit | null>(null);
   const [headerScrolled, setHeaderScrolled] = useState(false);
+
+  // ── Layout & View State ───────────────────────────────────────────────────
+  const [layoutMode, setLayoutMode] = useState<"rows" | "grid">(() => {
+    if (typeof window === "undefined") return "rows";
+    try {
+      const stored = localStorage.getItem("dw-layout-mode");
+      return stored === "grid" ? "grid" : "rows";
+    } catch {
+      return "rows";
+    }
+  });
+
+  const handleSetLayoutMode = useCallback((mode: "rows" | "grid") => {
+    setLayoutMode(mode);
+    try {
+      localStorage.setItem("dw-layout-mode", mode);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // ── Sort & Filter State ───────────────────────────────────────────────────
+  const [sortBy, setSortBy] = useState<SortOption>("newest");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>("all");
+  const [favouriteOnly, setFavouriteOnly] = useState(false);
+  const [weatherFilter, setWeatherFilter] = useState<string>("all");
+  const [occasionFilter, setOccasionFilter] = useState<string>("all");
+
+  // ── Selection Mode State ──────────────────────────────────────────────────
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // ── Detail Sheet State ────────────────────────────────────────────────────
+  const [detailItem, setDetailItem] = useState<WardrobeItem | null>(null);
+
+  // ── Pending Deletes Ref (for 5s Undo) ──────────────────────────────────────
+  const pendingDeletesRef = useRef<Map<string, { timeout: NodeJS.Timeout; items: WardrobeItem[] }>>(new Map());
+
+  // ── Category row scroll refs ──────────────────────────────────────────────
+  const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  const scrollCategoryRow = useCallback((key: string, direction: -1 | 1) => {
+    const el = rowRefs.current[key];
+    if (el) {
+      el.scrollBy({ left: direction * 420, behavior: "smooth" });
+    }
+  }, []);
+
   const hasFetched = useRef(false);
 
   const navigateTo = useCallback(
@@ -322,8 +367,108 @@ function HomeInner() {
     fetchItems();
   }, [fetchItems]);
 
-  const handleDelete = useCallback((id: string) => {
-    setItems((prev) => prev.filter((item) => item._id !== id));
+  // ── 5-second Undo Deletion ────────────────────────────────────────────────
+  const handleDeleteWithUndo = useCallback(
+    (itemsToDelete: WardrobeItem[]) => {
+      if (itemsToDelete.length === 0) return;
+      const idsToDelete = new Set(itemsToDelete.map((i) => i._id));
+
+      // Optimistically remove from state
+      setItems((prev) => prev.filter((i) => !idsToDelete.has(i._id)));
+
+      // Clear from selection if selected
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        itemsToDelete.forEach((i) => next.delete(i._id));
+        return next;
+      });
+
+      // Close detail sheet if showing one of these items
+      setDetailItem((current) => (current && idsToDelete.has(current._id) ? null : current));
+
+      const batchId = Math.random().toString(36).substring(2, 9);
+      const timer = setTimeout(async () => {
+        pendingDeletesRef.current.delete(batchId);
+        for (const item of itemsToDelete) {
+          try {
+            await fetch(`/api/items/${item._id}`, { method: "DELETE" });
+          } catch {
+            // Restore on server failure
+            setItems((prev) => [item, ...prev]);
+            toast(`Failed to permanently delete ${item.name}`, "error");
+          }
+        }
+      }, 5000);
+
+      pendingDeletesRef.current.set(batchId, { timeout: timer, items: itemsToDelete });
+
+      const msg =
+        itemsToDelete.length === 1
+          ? `"${itemsToDelete[0].name}" removed from archive`
+          : `${itemsToDelete.length} pieces removed from archive`;
+
+      toast(msg, {
+        action: {
+          label: "Undo",
+          onClick: () => {
+            const pending = pendingDeletesRef.current.get(batchId);
+            if (pending) {
+              clearTimeout(pending.timeout);
+              pendingDeletesRef.current.delete(batchId);
+              setItems((prev) => [...itemsToDelete, ...prev]);
+              toast(
+                itemsToDelete.length === 1
+                  ? "Piece restored"
+                  : `${itemsToDelete.length} pieces restored`
+              );
+            }
+          },
+        },
+        duration: 5000,
+      });
+    },
+    [toast]
+  );
+
+  const handleDelete = useCallback(
+    (id: string) => {
+      const item = items.find((i) => i._id === id);
+      if (item) {
+        handleDeleteWithUndo([item]);
+      } else {
+        setItems((prev) => prev.filter((i) => i._id !== id));
+      }
+    },
+    [items, handleDeleteWithUndo]
+  );
+
+  // Cleanup pending deletes on unmount
+  useEffect(() => {
+    const pending = pendingDeletesRef.current;
+    return () => {
+      pending.forEach(({ timeout, items: toDelete }) => {
+        clearTimeout(timeout);
+        toDelete.forEach((item) => {
+          fetch(`/api/items/${item._id}`, { method: "DELETE", keepalive: true }).catch(() => {});
+        });
+      });
+      pending.clear();
+    };
+  }, []);
+
+  const handleToggleFavourite = useCallback((id: string, isFav: boolean) => {
+    setItems((prev) =>
+      prev.map((i) => (i._id === id ? { ...i, favourite: isFav } : i))
+    );
+  }, []);
+
+  const handleToggleSelect = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }, []);
 
   const handleEdit = useCallback(
@@ -348,23 +493,106 @@ function HomeInner() {
     [fetchItems, toast]
   );
 
-  // ── Filtering and pagination ───────────────────────────────────────────────
+  // ── Available metadata for filter controls ────────────────────────────────
+  const availableWeather = useMemo(() => {
+    const set = new Set<string>();
+    items.forEach((i) => i.tags?.weather?.forEach((w) => set.add(w.toLowerCase())));
+    return Array.from(set).sort();
+  }, [items]);
+
+  const availableOccasion = useMemo(() => {
+    const set = new Set<string>();
+    items.forEach((i) => i.tags?.occasion?.forEach((o) => set.add(o.toLowerCase())));
+    return Array.from(set).sort();
+  }, [items]);
+
+  const favCount = useMemo(() => items.filter((i) => Boolean(i.favourite)).length, [items]);
+
+  const hasActiveFilters =
+    searchQuery.trim() !== "" ||
+    selectedCategoryFilter !== "all" ||
+    favouriteOnly ||
+    weatherFilter !== "all" ||
+    occasionFilter !== "all";
+
+  const clearAllFilters = useCallback(() => {
+    setSearchQuery("");
+    setSelectedCategoryFilter("all");
+    setFavouriteOnly(false);
+    setWeatherFilter("all");
+    setOccasionFilter("all");
+  }, []);
+
+  // ── Filtering and sorting ─────────────────────────────────────────────────
   const filteredItems = useMemo(() => {
-    return items.filter((item) => {
-      const matchesSearch =
-        searchQuery.trim() === "" ||
-        item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.tags?.weather?.some((t) => t.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        item.tags?.occasion?.some((t) => t.toLowerCase().includes(searchQuery.toLowerCase()));
-      const matchesCategory =
-        selectedCategoryFilter === "all" || item.category === selectedCategoryFilter;
-      return matchesSearch && matchesCategory;
+    const q = searchQuery.trim().toLowerCase();
+    const result = items.filter((item) => {
+      if (favouriteOnly && !item.favourite) return false;
+      if (selectedCategoryFilter !== "all" && item.category !== selectedCategoryFilter) return false;
+      if (weatherFilter !== "all") {
+        if (!item.tags?.weather?.some((w) => w.toLowerCase() === weatherFilter)) return false;
+      }
+      if (occasionFilter !== "all") {
+        if (!item.tags?.occasion?.some((o) => o.toLowerCase() === occasionFilter)) return false;
+      }
+      if (q) {
+        const matchesName = item.name.toLowerCase().includes(q);
+        const matchesCategory = item.category.toLowerCase().includes(q);
+        const matchesWeather = item.tags?.weather?.some((t) => t.toLowerCase().includes(q));
+        const matchesOccasion = item.tags?.occasion?.some((t) => t.toLowerCase().includes(q));
+        if (!matchesName && !matchesCategory && !matchesWeather && !matchesOccasion) return false;
+      }
+      return true;
     });
-  }, [items, searchQuery, selectedCategoryFilter]);
+
+    return [...result].sort((a, b) => {
+      if (sortBy === "newest") {
+        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return dateB - dateA;
+      }
+      if (sortBy === "oldest") {
+        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return dateA - dateB;
+      }
+      if (sortBy === "name") {
+        return a.name.localeCompare(b.name);
+      }
+      if (sortBy === "category") {
+        return a.category.localeCompare(b.category) || a.name.localeCompare(b.name);
+      }
+      return 0;
+    });
+  }, [items, searchQuery, selectedCategoryFilter, favouriteOnly, weatherFilter, occasionFilter, sortBy]);
+
+  const handleSelectAll = useCallback(() => {
+    if (selectedIds.size === filteredItems.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredItems.map((i) => i._id)));
+    }
+  }, [selectedIds.size, filteredItems]);
+
+  const handleStageSelectedInMaker = useCallback(() => {
+    if (selectedIds.size === 0) return;
+    const ids = Array.from(selectedIds);
+    handleTryInMaker("selected", ids);
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  }, [selectedIds, handleTryInMaker]);
+
+  const handleDeleteSelected = useCallback(() => {
+    const selectedItems = items.filter((i) => selectedIds.has(i._id));
+    if (selectedItems.length > 0) {
+      handleDeleteWithUndo(selectedItems);
+      setSelectionMode(false);
+      setSelectedIds(new Set());
+    }
+  }, [items, selectedIds, handleDeleteWithUndo]);
 
   const PAGE_SIZE = 48;
-  const filterKey = `${searchQuery}:${selectedCategoryFilter}`;
+  const filterKey = `${searchQuery}:${selectedCategoryFilter}:${favouriteOnly}:${weatherFilter}:${occasionFilter}:${sortBy}`;
   const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
@@ -734,36 +962,108 @@ function HomeInner() {
                   </div>
                 )}
 
-                {/* ── Search and filter ─────────────────────────────────── */}
+                {/* ── Gallery toolbar: search, layout, sort, selection ──────── */}
                 {items.length > 0 && (
-                  <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="relative w-full sm:max-w-xs">
-                      <Search
-                        size={14}
-                        className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none"
-                      />
-                      <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Search archive…"
-                        className="w-full rounded-full border border-border bg-surface pl-9 pr-8 py-2 text-xs text-foreground placeholder:text-subtle focus:outline-none focus:border-accent focus:ring-2 focus:ring-[var(--ring)] transition-all"
-                      />
-                      {searchQuery && (
+                  <div className="mb-8 space-y-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      {/* Search Input */}
+                      <div className="relative w-full sm:max-w-xs">
+                        <Search
+                          size={14}
+                          className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none"
+                        />
+                        <input
+                          type="text"
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          placeholder="Search archive…"
+                          className="w-full rounded-full border border-border bg-surface pl-9 pr-8 py-2 text-xs text-foreground placeholder:text-subtle focus:outline-none focus:border-accent focus:ring-2 focus:ring-[var(--ring)] transition-all"
+                        />
+                        {searchQuery && (
+                          <button
+                            onClick={() => setSearchQuery("")}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-foreground p-0.5 rounded-full"
+                            aria-label="Clear search"
+                          >
+                            <X size={12} />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Controls: Sort, Layout Switcher, Select mode */}
+                      <div className="flex flex-wrap items-center gap-2">
+                        {/* Sort select */}
+                        <div className="flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1.5 shadow-2xs">
+                          <span className="text-[11px] text-muted font-medium">Sort:</span>
+                          <select
+                            value={sortBy}
+                            onChange={(e) => setSortBy(e.target.value as SortOption)}
+                            aria-label="Sort pieces by"
+                            className="bg-transparent text-xs text-foreground font-medium outline-none cursor-pointer"
+                          >
+                            <option value="newest" className="bg-surface text-foreground">Newest</option>
+                            <option value="oldest" className="bg-surface text-foreground">Oldest</option>
+                            <option value="name" className="bg-surface text-foreground">Name (A–Z)</option>
+                            <option value="category" className="bg-surface text-foreground">Category</option>
+                          </select>
+                        </div>
+
+                        {/* Layout switcher: Rows vs Grid */}
+                        <div className="flex items-center rounded-full border border-border bg-surface p-0.5 shadow-2xs">
+                          <button
+                            type="button"
+                            onClick={() => handleSetLayoutMode("rows")}
+                            aria-label="Horizontal rows view"
+                            aria-pressed={layoutMode === "rows"}
+                            className={`flex h-7 w-7 items-center justify-center rounded-full transition-all cursor-pointer ${
+                              layoutMode === "rows"
+                                ? "bg-foreground text-background shadow-2xs"
+                                : "text-muted hover:text-foreground"
+                            }`}
+                          >
+                            <Rows size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSetLayoutMode("grid")}
+                            aria-label="Grid view"
+                            aria-pressed={layoutMode === "grid"}
+                            className={`flex h-7 w-7 items-center justify-center rounded-full transition-all cursor-pointer ${
+                              layoutMode === "grid"
+                                ? "bg-foreground text-background shadow-2xs"
+                                : "text-muted hover:text-foreground"
+                            }`}
+                          >
+                            <LayoutGrid size={13} />
+                          </button>
+                        </div>
+
+                        {/* Selection mode toggle */}
                         <button
-                          onClick={() => setSearchQuery("")}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-foreground p-0.5 rounded-full"
-                          aria-label="Clear search"
+                          type="button"
+                          onClick={() => {
+                            setSelectionMode((prev) => !prev);
+                            if (selectionMode) setSelectedIds(new Set());
+                          }}
+                          aria-pressed={selectionMode}
+                          className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all shadow-2xs cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
+                            selectionMode
+                              ? "bg-accent text-white"
+                              : "border border-border bg-surface text-muted hover:text-foreground hover:border-border-strong"
+                          }`}
+                          style={selectionMode ? { background: "var(--accent)" } : undefined}
                         >
-                          <X size={12} />
+                          <Check size={12} strokeWidth={2.5} />
+                          <span>{selectionMode ? "Done" : "Select"}</span>
                         </button>
-                      )}
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide py-1">
+                    {/* Filter chips & metadata row */}
+                    <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto scrollbar-hide py-1">
                       <button
                         onClick={() => setSelectedCategoryFilter("all")}
-                        className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] whitespace-nowrap ${
+                        className={`rounded-full px-3 py-1 text-xs font-medium transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] whitespace-nowrap ${
                           selectedCategoryFilter === "all"
                             ? "bg-foreground text-background shadow-2xs"
                             : "bg-surface border border-border text-muted hover:text-foreground"
@@ -778,7 +1078,7 @@ function HomeInner() {
                           <button
                             key={key}
                             onClick={() => setSelectedCategoryFilter(key)}
-                            className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
+                            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
                               selectedCategoryFilter === key
                                 ? "bg-foreground text-background shadow-2xs"
                                 : "bg-surface border border-border text-muted hover:text-foreground"
@@ -788,6 +1088,65 @@ function HomeInner() {
                           </button>
                         );
                       })}
+
+                      {/* Favourites filter toggle */}
+                      <button
+                        onClick={() => setFavouriteOnly((f) => !f)}
+                        aria-pressed={favouriteOnly}
+                        className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
+                          favouriteOnly
+                            ? "bg-accent text-white shadow-2xs"
+                            : "bg-surface border border-border text-muted hover:text-foreground"
+                        }`}
+                        style={favouriteOnly ? { background: "var(--accent)" } : undefined}
+                      >
+                        <Heart size={12} fill={favouriteOnly ? "currentColor" : "none"} />
+                        <span>Favourites {favCount > 0 ? `(${favCount})` : ""}</span>
+                      </button>
+
+                      {/* Weather tag filter if tags exist */}
+                      {availableWeather.length > 0 && (
+                        <select
+                          value={weatherFilter}
+                          onChange={(e) => setWeatherFilter(e.target.value)}
+                          aria-label="Filter by weather tag"
+                          className="rounded-full border border-border bg-surface px-2.5 py-1 text-xs text-muted hover:text-foreground outline-none cursor-pointer"
+                        >
+                          <option value="all" className="bg-surface text-foreground">Weather: All</option>
+                          {availableWeather.map((w) => (
+                            <option key={w} value={w} className="bg-surface text-foreground capitalize">
+                              Weather: {w}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+
+                      {/* Occasion tag filter if tags exist */}
+                      {availableOccasion.length > 0 && (
+                        <select
+                          value={occasionFilter}
+                          onChange={(e) => setOccasionFilter(e.target.value)}
+                          aria-label="Filter by occasion tag"
+                          className="rounded-full border border-border bg-surface px-2.5 py-1 text-xs text-muted hover:text-foreground outline-none cursor-pointer"
+                        >
+                          <option value="all" className="bg-surface text-foreground">Occasion: All</option>
+                          {availableOccasion.map((o) => (
+                            <option key={o} value={o} className="bg-surface text-foreground capitalize">
+                              Occasion: {o}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+
+                      {/* Clear active filters button */}
+                      {hasActiveFilters && (
+                        <button
+                          onClick={clearAllFilters}
+                          className="text-xs text-muted hover:text-foreground px-2 py-1 underline underline-offset-2 cursor-pointer transition-colors"
+                        >
+                          Clear filters
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -799,16 +1158,68 @@ function HomeInner() {
                   <ArchiveEmptyState onAction={() => window.scrollTo({ top: 0, behavior: "smooth" })} />
                 ) : filteredItems.length === 0 ? (
                   <div className="card rounded-3xl p-12 text-center">
-                    <p className="text-sm font-medium text-foreground">No pieces match your search.</p>
+                    <p className="text-sm font-medium text-foreground">No pieces match your search or filters.</p>
                     <button
-                      onClick={() => { setSearchQuery(""); setSelectedCategoryFilter("all"); }}
-                      className="mt-3 text-xs font-medium hover:underline underline-offset-2"
+                      onClick={clearAllFilters}
+                      className="mt-3 text-xs font-medium hover:underline underline-offset-2 cursor-pointer"
                       style={{ color: "var(--accent)" }}
                     >
                       Clear filters
                     </button>
                   </div>
+                ) : layoutMode === "grid" ? (
+                  /* ── Unified Grid View ───────────────────────────────── */
+                  <div>
+                    <div className="mb-4 flex items-center justify-between">
+                      <span className="eyebrow">
+                        Showing {visibleItems.length} of {filteredItems.length} {filteredItems.length === 1 ? "piece" : "pieces"}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                      <AnimatePresence>
+                        {visibleItems.map((item, itemIdx) => (
+                          <motion.div
+                            key={item._id}
+                            layout
+                            initial={{ opacity: 0, scale: 0.96 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.9 }}
+                            transition={{
+                              duration: 0.24,
+                              delay: Math.min(itemIdx * 0.02, 0.2),
+                              ease: [0.22, 1, 0.36, 1],
+                            }}
+                          >
+                            <ItemCard
+                              item={item}
+                              selectable={selectionMode}
+                              selected={selectedIds.has(item._id)}
+                              onToggleSelect={handleToggleSelect}
+                              onOpenDetail={setDetailItem}
+                              onEdit={setEditingItem}
+                              onDelete={handleDelete}
+                              onToggleFavourite={handleToggleFavourite}
+                              priority={itemIdx < 6}
+                            />
+                          </motion.div>
+                        ))}
+                      </AnimatePresence>
+                    </div>
+
+                    {filteredItems.length > visibleCount && (
+                      <div ref={loadMoreSentinelRef} className="pt-8 pb-2 flex flex-col items-center justify-center gap-2">
+                        <button
+                          onClick={() => setVisibleCount((prev) => Math.min(prev + 24, filteredItems.length))}
+                          className="rounded-full border border-border bg-surface px-6 py-2.5 text-xs font-medium text-foreground hover:bg-surface-2 transition-colors shadow-2xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] cursor-pointer"
+                        >
+                          Show more pieces ({filteredItems.length - visibleCount} remaining)
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 ) : (
+                  /* ── Category Rows View ──────────────────────────────── */
                   <div className="space-y-12">
                     {CATEGORY_ROWS.map(({ key, label }, categoryIdx) => {
                       const rowItems = visibleItems.filter((i) => i.category === key);
@@ -817,13 +1228,38 @@ function HomeInner() {
                       const content = (
                         <section>
                           <div className="mb-4 flex items-center justify-between">
-                            <h2 className="text-h3 text-foreground">{label}</h2>
-                            <span className="eyebrow">
-                              {rowItems.length} {rowItems.length === 1 ? "piece" : "pieces"}
-                            </span>
+                            <div className="flex items-center gap-3">
+                              <h2 className="text-h3 text-foreground">{label}</h2>
+                              <span className="eyebrow">
+                                {rowItems.length} {rowItems.length === 1 ? "piece" : "pieces"}
+                              </span>
+                            </div>
+
+                            {/* Desktop scroll arrows */}
+                            <div className="hidden sm:flex items-center gap-1.5">
+                              <button
+                                onClick={() => scrollCategoryRow(key, -1)}
+                                className="flex h-7 w-7 items-center justify-center rounded-full border border-border bg-surface text-muted hover:text-foreground hover:bg-surface-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] cursor-pointer"
+                                aria-label={`Scroll ${label} left`}
+                              >
+                                <ChevronLeft size={14} />
+                              </button>
+                              <button
+                                onClick={() => scrollCategoryRow(key, 1)}
+                                className="flex h-7 w-7 items-center justify-center rounded-full border border-border bg-surface text-muted hover:text-foreground hover:bg-surface-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] cursor-pointer"
+                                aria-label={`Scroll ${label} right`}
+                              >
+                                <ChevronRight size={14} />
+                              </button>
+                            </div>
                           </div>
 
-                          <div className="snap-row scrollbar-hide -mx-5 flex gap-4 overflow-x-auto px-5 pb-3 sm:-mx-8 sm:px-8 [contain:content]">
+                          <div
+                            ref={(el) => {
+                              rowRefs.current[key] = el;
+                            }}
+                            className="snap-row scrollbar-hide -mx-5 flex gap-4 overflow-x-auto px-5 pb-3 sm:-mx-8 sm:px-8 [contain:content]"
+                          >
                             <AnimatePresence>
                               {rowItems.map((item, itemIdx) => (
                                 <motion.div
@@ -841,8 +1277,13 @@ function HomeInner() {
                                 >
                                   <ItemCard
                                     item={item}
-                                    onDelete={handleDelete}
+                                    selectable={selectionMode}
+                                    selected={selectedIds.has(item._id)}
+                                    onToggleSelect={handleToggleSelect}
+                                    onOpenDetail={setDetailItem}
                                     onEdit={setEditingItem}
+                                    onDelete={handleDelete}
+                                    onToggleFavourite={handleToggleFavourite}
                                     priority={categoryIdx === 0 && itemIdx < 4}
                                   />
                                 </motion.div>
@@ -941,6 +1382,89 @@ function HomeInner() {
               onClose={() => setEditingItem(null)}
               onSave={(updated) => { handleEdit(updated as WardrobeItem); }}
             />
+          )}
+        </AnimatePresence>
+
+        {/* ── Item Detail Slide-over Sheet ───────────────────────────────── */}
+        <ItemDetailSheet
+          item={detailItem}
+          onClose={() => setDetailItem(null)}
+          onEdit={(item) => {
+            setEditingItem(item);
+            setDetailItem(null);
+          }}
+          onDelete={(id) => {
+            const target = items.find((i) => i._id === id);
+            if (target) handleDeleteWithUndo([target]);
+            setDetailItem(null);
+          }}
+          onAddToOutfit={(item) => {
+            handleTryInMaker("detail", [item._id]);
+            setDetailItem(null);
+          }}
+          onToggleFavourite={handleToggleFavourite}
+        />
+
+        {/* ── Floating selection bar ────────────────────────────────────── */}
+        <AnimatePresence>
+          {selectionMode && (
+            <motion.div
+              initial={{ y: 80, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 80, opacity: 0 }}
+              transition={springPremium}
+              className="fixed bottom-20 sm:bottom-8 inset-x-0 z-40 flex justify-center px-4 pointer-events-none"
+            >
+              <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-border bg-surface/95 backdrop-blur-md px-5 py-2.5 shadow-2xl">
+                <span className="text-xs font-medium text-foreground">
+                  {selectedIds.size} selected
+                </span>
+                <div className="h-4 w-px bg-border" />
+                <button
+                  type="button"
+                  onClick={handleSelectAll}
+                  className="text-xs text-muted hover:text-foreground font-medium cursor-pointer"
+                >
+                  {selectedIds.size === filteredItems.length && filteredItems.length > 0
+                    ? "Deselect all"
+                    : "Select all"}
+                </button>
+                {selectedIds.size > 0 && (
+                  <>
+                    <div className="h-4 w-px bg-border" />
+                    <button
+                      type="button"
+                      onClick={handleStageSelectedInMaker}
+                      className="flex items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-xs font-medium text-white shadow-xs hover:bg-accent-hover transition-colors cursor-pointer"
+                      style={{ background: "var(--accent)" }}
+                    >
+                      <Shirt size={12} />
+                      <span>Stage outfit</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDeleteSelected}
+                      className="flex items-center gap-1.5 rounded-full border border-destructive/30 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
+                    >
+                      <Trash2 size={12} />
+                      <span>Delete</span>
+                    </button>
+                  </>
+                )}
+                <div className="h-4 w-px bg-border" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectionMode(false);
+                    setSelectedIds(new Set());
+                  }}
+                  className="rounded-full p-1 text-muted hover:text-foreground transition-colors cursor-pointer"
+                  aria-label="Exit selection mode"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            </motion.div>
           )}
         </AnimatePresence>
       </main>

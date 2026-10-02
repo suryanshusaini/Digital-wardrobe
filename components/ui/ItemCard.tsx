@@ -2,58 +2,59 @@
 
 import { useState, useRef, useCallback } from "react";
 import Image from "next/image";
-import { motion, AnimatePresence, useSpring, useMotionValue } from "framer-motion";
-import { Pencil, Trash2 } from "lucide-react";
+import { motion, useSpring, useMotionValue } from "framer-motion";
+import { Heart, Check } from "lucide-react";
 import { optimizeCloudinaryUrl } from "@/lib/cloudinaryUrl";
-import { useToast } from "@/components/ui/Toast";
 
-// Tiny Cloudinary blur placeholder or 1x1 data url
 const BLUR_DATA_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 
-const MAX_TILT = 6;
+const MAX_TILT = 5;
 
-interface WardrobeItem {
+export interface WardrobeItem {
   _id: string;
   name: string;
   category: string;
   imageUrl: string;
+  favourite?: boolean;
+  dominantColor?: string;
   tags?: { weather: string[]; occasion: string[] };
+  createdAt?: string;
 }
 
 interface ItemCardProps {
   item: WardrobeItem;
   onDelete?: (id: string) => void;
   onEdit?: (item: WardrobeItem) => void;
+  onOpenDetail?: (item: WardrobeItem) => void;
+  onToggleFavourite?: (id: string, isFav: boolean) => void;
+  selectable?: boolean;
+  selected?: boolean;
+  onToggleSelect?: (id: string) => void;
   priority?: boolean;
 }
 
 export default function ItemCard({
   item,
-  onDelete,
+  onOpenDetail,
   onEdit,
+  onToggleFavourite,
+  selectable = false,
+  selected = false,
+  onToggleSelect,
   priority = false,
 }: ItemCardProps) {
-  const { toast } = useToast();
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-
-  // 3D perspective tilt springs driven directly by motion values (no React state updates on mouse move)
-  const rotateX = useMotionValue(0);
-  const rotateY = useMotionValue(0);
-  const rotateXSpring = useSpring(rotateX, { stiffness: 180, damping: 22, mass: 0.6 });
-  const rotateYSpring = useSpring(rotateY, { stiffness: 180, damping: 22, mass: 0.6 });
-
-  // Specular highlight position driven via motion values
-  const highlightX = useMotionValue(50);
-  const highlightY = useMotionValue(50);
-  const highlightOpacity = useMotionValue(0);
-
+  const [isFav, setIsFav] = useState(Boolean(item.favourite));
   const cardRef = useRef<HTMLDivElement>(null);
 
-  const handleMouseMove = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      // Only enable tilt under (hover: hover) and (pointer: fine)
+  // 3D perspective tilt springs
+  const rotateX = useMotionValue(0);
+  const rotateY = useMotionValue(0);
+  const rotateXSpring = useSpring(rotateX, { stiffness: 220, damping: 24, mass: 0.5 });
+  const rotateYSpring = useSpring(rotateY, { stiffness: 220, damping: 24, mass: 0.5 });
+
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
       if (typeof window !== "undefined" && !window.matchMedia("(hover: hover) and (pointer: fine)").matches) {
         return;
       }
@@ -65,69 +66,83 @@ export default function ItemCard({
       rotateY.set((cx - 0.5) * MAX_TILT * 2);
       rotateX.set(-(cy - 0.5) * MAX_TILT * 2);
 
-      highlightX.set(cx * 100);
-      highlightY.set(cy * 100);
-      highlightOpacity.set(0.18);
-
-      if (cardRef.current) {
-        cardRef.current.style.setProperty("--mx", String(cx * 100));
-        cardRef.current.style.setProperty("--my", String(cy * 100));
-      }
+      cardRef.current.style.setProperty("--mx", String(cx * 100));
+      cardRef.current.style.setProperty("--my", String(cy * 100));
     },
-    [rotateX, rotateY, highlightX, highlightY, highlightOpacity]
+    [rotateX, rotateY]
   );
 
-  const handleMouseLeave = useCallback(() => {
+  const handlePointerLeave = useCallback(() => {
     rotateX.set(0);
     rotateY.set(0);
-    highlightOpacity.set(0);
-    setConfirmDelete(false);
-  }, [rotateX, rotateY, highlightOpacity]);
+  }, [rotateX, rotateY]);
 
-  const handleDelete = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!confirmDelete) {
-      setConfirmDelete(true);
-      return;
-    }
-    setIsDeleting(true);
-    try {
-      const res = await fetch(`/api/items/${item._id}`, { method: "DELETE" });
-      if (res.ok) {
-        onDelete?.(item._id);
-        toast("Piece removed from archive");
-      } else {
-        toast("Could not delete this piece", "error");
-      }
-    } catch {
-      toast("Could not delete this piece", "error");
-    } finally {
-      setIsDeleting(false);
-      setConfirmDelete(false);
+  const handleCardClick = () => {
+    if (selectable) {
+      onToggleSelect?.(item._id);
+    } else if (onOpenDetail) {
+      onOpenDetail(item);
+    } else if (onEdit) {
+      onEdit(item);
     }
   };
 
-  const showActions = Boolean(onEdit) || Boolean(onDelete);
+  const handleToggleFavourite = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const next = !isFav;
+    setIsFav(next);
+    onToggleFavourite?.(item._id, next);
+
+    try {
+      await fetch(`/api/items/${item._id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ favourite: next }),
+      });
+    } catch {
+      // Revert on network failure
+      setIsFav(!next);
+      onToggleFavourite?.(item._id, !next);
+    }
+  };
 
   return (
     <motion.div
       ref={cardRef}
-      className="card card-interactive group relative aspect-[3/4] cursor-pointer overflow-hidden"
+      role="button"
+      tabIndex={0}
+      aria-label={`${item.name}, ${item.category}`}
+      className={`card card-interactive group relative aspect-[3/4] cursor-pointer overflow-hidden select-none ${
+        selected ? "ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-background" : ""
+      }`}
       style={{
-        perspective: "900px",
+        perspective: "800px",
         rotateX: rotateXSpring,
         rotateY: rotateYSpring,
         transformStyle: "preserve-3d",
       }}
       whileTap={{ scale: 0.98 }}
       transition={{ duration: 0.15 }}
-      onMouseMove={handleMouseMove}
-      onMouseLeave={handleMouseLeave}
-      onClick={() => onEdit?.(item)}
+      onPointerMove={handlePointerMove}
+      onPointerLeave={handlePointerLeave}
+      onClick={handleCardClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          handleCardClick();
+        }
+      }}
     >
-      {/* Photo-mat tile: uses --surface-mat token ensuring #f8f7f5 baked-in backgrounds appear as clean editorial photo tiles in dark mode */}
-      <div className="absolute inset-0 bg-[var(--surface-mat)] p-2">
-        <div className="relative h-full w-full overflow-hidden rounded-xl">
+      {/* Background mat with dominant color placeholder */}
+      <div
+        className="absolute inset-0 p-2"
+        style={{
+          backgroundColor: item.dominantColor
+            ? `${item.dominantColor}15`
+            : "var(--surface-mat)",
+        }}
+      >
+        <div className="relative h-full w-full overflow-hidden rounded-xl bg-surface-2">
           <Image
             src={optimizeCloudinaryUrl(item.imageUrl)}
             alt={item.name}
@@ -137,68 +152,64 @@ export default function ItemCard({
             blurDataURL={BLUR_DATA_URL}
             priority={priority}
             loading={priority ? undefined : "lazy"}
-            sizes="(max-width: 640px) 48vw, (max-width: 1024px) 224px, 224px"
+            sizes="(max-width: 640px) 48vw, (max-width: 1024px) 240px, 260px"
             draggable={false}
           />
         </div>
       </div>
 
-      {/* Soft specular highlight driven via motion values without re-rendering */}
-      <motion.div
-        className="pointer-events-none absolute inset-0 rounded-2xl transition-opacity duration-200"
-        style={{
-          background: "radial-gradient(circle 80px at 50% 50%, rgba(255,255,255,0.55) 0%, transparent 70%)",
-          opacity: highlightOpacity,
-        }}
-        aria-hidden
-      />
-
-      {/* Action buttons — visible on hover (desktop) or always (mobile) */}
-      {showActions && (
-        <div className="absolute inset-x-0 bottom-0 flex items-end justify-end gap-2 p-2.5 opacity-100 transition-opacity duration-300 ease-out sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
-          <AnimatePresence>
-            {(Boolean(onEdit) || Boolean(onDelete)) && (
-              <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="flex items-center gap-1.5 rounded-full border border-border bg-surface/95 p-1 shadow-sm backdrop-blur-sm"
-              >
-                {onEdit && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onEdit(item);
-                    }}
-                    className="rounded-full p-2 text-foreground transition-all duration-200 hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-                    aria-label={`Edit ${item.name}`}
-                  >
-                    <Pencil size={13} />
-                  </button>
-                )}
-
-                {onDelete && (
-                  <button
-                    onClick={handleDelete}
-                    disabled={isDeleting}
-                    className={`flex items-center gap-1 rounded-full px-2.5 py-2 text-xs font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50 ${
-                      confirmDelete
-                        ? "bg-red-500 text-white"
-                        : "text-foreground hover:bg-surface-2"
-                    }`}
-                    aria-label={
-                      confirmDelete
-                        ? `Confirm delete ${item.name}`
-                        : `Delete ${item.name}`
-                    }
-                  >
-                    {isDeleting ? "…" : confirmDelete ? "Sure?" : <Trash2 size={13} />}
-                  </button>
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
+      {/* Selection checkbox pill */}
+      {selectable && (
+        <div
+          className={`absolute top-3 left-3 z-30 flex h-6 w-6 items-center justify-center rounded-full border shadow-sm transition-all ${
+            selected
+              ? "border-accent bg-accent text-white"
+              : "border-border/80 bg-surface/90 text-transparent hover:border-accent"
+          }`}
+          style={selected ? { background: "var(--accent)", borderColor: "var(--accent)" } : undefined}
+          aria-hidden
+        >
+          <Check size={13} strokeWidth={2.5} />
         </div>
       )}
+
+      {/* Favourite heart toggle button (top-right) */}
+      <button
+        type="button"
+        onClick={handleToggleFavourite}
+        className={`absolute top-3 right-3 z-30 flex h-7 w-7 items-center justify-center rounded-full border border-border/80 bg-surface/85 backdrop-blur-md transition-all hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
+          isFav
+            ? "text-accent opacity-100"
+            : "text-muted opacity-80 sm:opacity-0 sm:group-hover:opacity-100 hover:text-foreground"
+        }`}
+        style={isFav ? { color: "var(--accent)" } : undefined}
+        aria-label={isFav ? `Unfavourite ${item.name}` : `Favourite ${item.name}`}
+      >
+        <Heart
+          size={14}
+          fill={isFav ? "currentColor" : "none"}
+          strokeWidth={isFav ? 2 : 1.75}
+        />
+      </button>
+
+      {/* Editorial caption bar at card base */}
+      <div className="absolute inset-x-0 bottom-0 z-20 flex flex-col justify-end bg-gradient-to-t from-background/95 via-background/70 to-transparent p-3 pt-8 pointer-events-none">
+        <p className="font-serif text-[15px] font-normal leading-tight text-foreground truncate">
+          {item.name}
+        </p>
+        <div className="mt-1 flex items-center gap-1.5 min-w-0">
+          {item.dominantColor && (
+            <span
+              className="h-2 w-2 rounded-full border border-black/10 shrink-0"
+              style={{ backgroundColor: item.dominantColor }}
+              aria-hidden
+            />
+          )}
+          <span className="eyebrow text-[9px] truncate">
+            {item.category}
+          </span>
+        </div>
+      </div>
     </motion.div>
   );
 }
